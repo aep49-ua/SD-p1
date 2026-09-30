@@ -3,6 +3,8 @@ import java.net.*;
 
 public class WM_WS_M {
 
+
+
     /*
      * Lee datos del socket utilizando DataInputStream.
      */
@@ -33,16 +35,17 @@ public class WM_WS_M {
     /*
      * Inicia el registro de la estación de riego ante WM_Central.
      */
-    public void registrarEstacion(String p_host, String p_puerto, String idEstacion, String ubicacion) {
+    public void registrarEstacion(String ip_wm_central, String puerto_wm_central, String idEstacion, String ubicacion, String puerto_WM_WS_E) {
         Socket skCliente = null;
         String tramaEnvio = "";
         String respuesta = "";
+        String wsCliente = null;
 
         try {
             // 1. Abrir la conexión con el servidor WM_Central
-            int puerto = Integer.parseInt(p_puerto);
-            skCliente = new Socket(p_host, puerto);
-            System.out.println("Conectado con el servidor WM_Central en " + p_host + ":" + puerto);
+            int p_wm_central = Integer.parseInt(puerto_wm_central);
+            skCliente = new Socket(ip_wm_central, p_wm_central);
+            System.out.println("Conectado con el servidor WM_Central en " + puerto_wm_central + ":" + p_wm_central);
 
             // 2. Construir la trama con formato: REGISTRO#<ID_ESTACION>#<UBICACION>
             tramaEnvio = "REGISTRO#" + idEstacion + "#" + ubicacion;
@@ -55,18 +58,49 @@ public class WM_WS_M {
             respuesta = leeSocket(skCliente, respuesta);
             System.out.println("Respuesta del servidor: " + respuesta);
 
+
+
+            // Una vez recibida la confirmación de WM_Central esperaremos a que nos acepte conexión por parte de WS_Engine
+           
+
+            // Se supone que escucha por el puerto de WM_WS_M
+            ServerSocket skServidor = new ServerSocket(Integer.parseInt(puerto_WM_WS_E));
+            System.out.println("Escucho el puerto " + puerto_WM_WS_E);
+
+            /*
+            * Mantenemos la comunicacion con el cliente
+            */	
+            for(;;)
+            {
+                /*
+                * Se espera un cliente que quiera conectarse
+                */
+                Socket engineCliente = skServidor.accept(); // Crea objeto
+                System.out.println("Sirviendo cliente...");
+
+                Thread t = new HiloWM(engineCliente);
+                t.start();
+            }
+
+            // Cuando nos acepte la conexion tendremos que enviarle la respuesta
+
+
+
         } catch (Exception e) {
             System.out.println("Error en la comunicación: " + e.getMessage());
         } finally {
             // 5. Cierre limpio de la conexión
-            try {
+            /*try {
                 if (skCliente != null && !skCliente.isClosed()) {
                     skCliente.close();
                     System.out.println("Conexión cerrada limpiamente.");
                 }
             } catch (IOException e) {
                 System.out.println("Error al cerrar el socket: " + e.getMessage());
-            }
+            }*/
+
+
+
         }
     }
 
@@ -79,10 +113,16 @@ public class WM_WS_M {
             System.exit(-1);
         }
 
-        String host = args[0];
+        /*String host = args[0];
         String puerto = args[1];
+        */
         String idEstacion = "";
         String ubicacion = "";
+        
+
+        String puerto_WM_WS_E = args[0];
+        String ip_wm_central = args[1];
+        String puerto_wm_central = args[2];
 
         try {
             // Si no se pasan como argumentos opcionales, se piden por teclado
@@ -96,7 +136,8 @@ public class WM_WS_M {
                 ubicacion = br.readLine();
             }
 
-            monitor.registrarEstacion(host, puerto, idEstacion, ubicacion);
+            //monitor.registrarEstacion(host, puerto, idEstacion, ubicacion);
+            registrarEstacion(ip_wm_central, puerto_wm_central, idEstacion, ubicacion, puerto_WM_WS_E);
 
         } catch (Exception e) {
             System.out.println("Error en la lectura de entrada: " + e.getMessage());
