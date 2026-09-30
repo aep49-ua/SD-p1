@@ -64,36 +64,39 @@ public class WM_WS_E extends Thread {
         //BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 
         if (args.length < 4) {
-            System.out.println("Uso: java WM_WS_E <ip_broker> <puerto_broker> <ip_ws_monitor> <puerto_ws_monitor>");
+            System.out.println("Uso: java WM_WS_E <ip_broker> <puerto_broker> <ip_wm_ws_m> <puerto_wm_ws_m>");
             System.exit(-1);
         }
 
 
-        String hostBroker = args[0];
+        String ipBroker = args[0];
         String puertoBroker = args[1];
-        String hostMonitor = args[2];
-        String puertoMonitor = args[3];
+        String ip_wm_ws_m = args[2];
+        String puerto_wm_ws_m = args[3];
 
 
-    
-        // Se supone que escucha por el puerto de WM_WS_M
-       ServerSocket skServidor = new ServerSocket(Integer.parseInt(puertoMonitor));
-		    System.out.println("Escucho el puerto " + puertoMonitor);
-	
-			/*
-			* Mantenemos la comunicacion con el cliente
-			*/	
-			for(;;)
-			{
-				/*
-				* Se espera un cliente que quiera conectarse
-				*/
-				Socket skCliente = skServidor.accept(); // Crea objeto
-		        System.out.println("Sirviendo cliente...");
+        // Se queda a la espera o envia cada 1 segundos si tiene respuesta el monitor?
+ 
 
-		        Thread t = new HiloWM(skCliente);
-		        t.start();
-			}
+        // 1. Abrir la conexión con el servidor WM_WS_E
+        int puertoEngine = Integer.parseInt(p_Engine);
+        wsCliente = new Socket(engineHost, puertoEngine);
+        System.out.println("Conectado con el servidor WM_WS_E en " + p_host + ":" + puerto);
+
+        // 2. Enviar la respuesta al servidor
+        escribeSocket(wsCliente, respuesta);
+
+        // 3. Cerrar conexion
+        try {
+            if(wsCliente != null && !wsCliente.isClosed()){
+                wsCliente.close();
+                System.out.println("Conexión cerrada limpiamente.");
+
+            }
+        } catch (IOException e) {
+            System.out.println("Error al cerrar el socket: " + e.getMessage());
+
+
 
        
     }
