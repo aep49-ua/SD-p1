@@ -1,0 +1,42 @@
+# ==========================================
+# Archivos compilados de Java (.class)
+# ==========================================
+*.class
+*.jar
+*.war
+*.ear
+bin/
+target/
+build/
+
+# ==========================================
+# Configuraciones de VS Code
+# ==========================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ==========================================
+# Archivos del sistema y logs
+# ==========================================
+*.log
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Base de datos SQLite local (Práctica)
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# Entornos de desarrollo adicionales (Eclipse/IntelliJ)
+# ==========================================
+.idea/
+*.iml
+.classpath
+.project
+.settings/
