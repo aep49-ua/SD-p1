@@ -74,28 +74,36 @@ public class WM_WS_E extends Thread {
         String ip_wm_ws_m = args[2];
         String puerto_wm_ws_m = args[3];
 
+        // Hilo secundario para capturar una tecla(KO)
 
-        // Se queda a la espera o envia cada 1 segundos si tiene respuesta el monitor?
- 
+        try
+        {
+        	int p_wm_ws_m = Integer.parseInt(puerto_wm_ws_m);
+        	Socket skEngineMonitor = new Socket(ip_wm_ws_m, p_wm_ws_m);
+        	System.out.println("Conectado con WM_WS_M en " + ip_wm_ws_m + ":" + puerto_wm_ws_m);
+        	
+        	WM_WS_E engine = new WM_WS_E(skEngineMonitor);
+        	
+        	for(;;)
+        	{
+        		String msg = engine.leeSocket(skEngineMonitor, "");
+        		if ("ESTADO".equals(msg))
+        		{
+        			// Cuando recibimos el mensaje ESTADO de WM_WS_M, le enviamos el mensaje OK
+        			escribeSocket(skEngineMonitor, "OK"); 
+        		}
+        		
+        	}
+        	
+        	
+        }catch (IOException e) {
 
-        // 1. Abrir la conexión con el servidor WM_WS_E
-        int puertoEngine = Integer.parseInt(p_Engine);
-        wsCliente = new Socket(engineHost, puertoEngine);
-        System.out.println("Conectado con el servidor WM_WS_E en " + p_host + ":" + puerto);
+            System.out.println(
+                "Error de conexión con WM_WS_M: " + e.getMessage()
+            );
 
-        // 2. Enviar la respuesta al servidor
-        escribeSocket(wsCliente, respuesta);
-
-        // 3. Cerrar conexion
-        try {
-            if(wsCliente != null && !wsCliente.isClosed()){
-                wsCliente.close();
-                System.out.println("Conexión cerrada limpiamente.");
-
-            }
-        } catch (IOException e) {
-            System.out.println("Error al cerrar el socket: " + e.getMessage());
-
+        
+        
 
 
        
