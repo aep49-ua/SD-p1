@@ -74,8 +74,17 @@ public class WM_WS_E extends Thread {
         String ip_wm_ws_m = args[2];
         String puerto_wm_ws_m = args[3];
 
-        // Hilo secundario para capturar una tecla(KO)
 
+        // Configurar e inicializar Productor de Kafka
+        String bootstrapServers = ipBroker + ":" + puertoBroker;
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        KafkaProducer<String, String> kafkaProducer = new KafkaProducer<>(props);
+        System.out.println("Conectado al broker de Kafka en: " + bootstrapServers);
+        
         try
         {
         	int p_wm_ws_m = Integer.parseInt(puerto_wm_ws_m);
@@ -91,6 +100,21 @@ public class WM_WS_E extends Thread {
         		{
         			// Cuando recibimos el mensaje ESTADO de WM_WS_M, le enviamos el mensaje OK
         			escribeSocket(skEngineMonitor, "OK"); 
+        			
+        			// Enviamos evento a Kafka
+        			String jsonPayload = "{\"station_id\": \"WS-01\", \"status\": \"AVAILABLE\", \"flow\": 0.0}";
+                    ProducerRecord<String, String> record = new ProducerRecord<>("numtest", jsonPayload);
+                    
+                    kafkaProducer.send(record, new Callback() {
+                        @Override
+                        public void onCompletion(RecordMetadata metadata, Exception exception) {
+                            if (exception != null) {
+                                System.err.println("Error enviando evento a Kafka: " + exception.getMessage());
+                            } else {
+                                System.out.println("Evento enviado a Kafka [Tópico: " + metadata.topic() + "]");
+                            }
+                        }
+                    });
         		}
         		
         	}
