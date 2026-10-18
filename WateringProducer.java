@@ -1,44 +1,50 @@
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.serialization.StringSerializer;
-
 import java.util.Properties;
 
-public class WateringProducer {
-    public static void main(String[] args) {
+public class WateringProducer implements AutoCloseable {
 
-    	Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    private final KafkaProducer<String, String> producer;
+
+    public WateringProducer(String bootstrapServers) {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
-        try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-            System.out.println(">>> [WaterManagement] Estación de riego simulando envío de eventos...");
+        this.producer = new KafkaProducer<>(props);
+    }
 
-            for (int e = 0; e < 1000; e++) {
-                String jsonPayload = String.format("{\"station_id\": \"WS-04\", \"number\": %d, \"status\": \"WATERING\", \"flow_l_min\": 8.5}", e);
+    public void enviarOrdenStart(String idEstacion, String idOperador, int duracion) {
+        String orden = String.format("START#%s#%s#%d", idEstacion, idOperador, duracion);
+        send("wm-comandos", orden);
+    }
 
-                ProducerRecord<String, String> record = new ProducerRecord<>("numtest", jsonPayload);
+    public void notificarOperario(String idOperador, String idEstacion, String resultado, String motivo) {
+        String mensaje = String.format("RESPONSE#%s#%s#%s#%s", idOperador, idEstacion, resultado, motivo);
+        send("water-responses-topic", mensaje);
+    }
 
-                // Envío asíncrono con callback de confirmación
-                producer.send(record, new Callback() {
-                    @Override
-                    public void onCompletion(RecordMetadata metadata, Exception exception) {
-                        if (exception != null) {
-                            System.err.println("Error de entrega en Kafka: " + exception.getMessage());
-                        } else {
-                            System.out.println("Evento enviado a tópico: " + metadata.topic() + " [Partición: " + metadata.partition() + "]");
-                        }
-                    }
-                });
-
-                Thread.sleep(5000);
+    public void send(String topic, String payload) {
+        ProducerRecord<String, String> record = new ProducerRecord<>(topic, payload);
+        producer.send(record, new Callback() {
+            @Override
+            public void onCompletion(RecordMetadata metadata, Exception exception) {
+                if (exception != null) {
+                    System.err.println("[PRODUCER ERROR] Error al publicar en " + topic + ": " + exception.getMessage());
+                } else {
+                    System.out.println("[KAFKA PUB] -> Tópico: " + metadata.topic() + " | Trama: " + payload);
+                }
             }
+        });
+        producer.flush();
+    }
 
+    @Override
+    public void close() {
+        if (producer != null) {
             producer.flush();
-            
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("Productor de estación interrumpido.");
+            producer.close();
         }
     }
 }
