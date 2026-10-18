@@ -39,6 +39,35 @@ public class EstacionDAO {
         }
     }
 
+    public static String obtenerEstado(String idEstacion) throws Exception {
+        String sql = "SELECT estado FROM estaciones WHERE id = ?";
+        String estado = "DESCONECTADA";
+
+        Connection con = null;
+        try {
+            con = DatabaseInitializer.conectar();
+            try (PreparedStatement pstmt = con.prepareStatement(sql)) {
+                pstmt.setString(1, idEstacion);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        estado = rs.getString("estado");
+                    }
+                }
+            }
+        } catch (SQLException ex) {
+            throw new Exception("Error BD (obtenerEstado): " + ex.getMessage());
+        } finally {
+            if (con != null) {
+                try {
+                    con.close();
+                } catch (SQLException ex) {
+                    System.err.println("Error al cerrar conexión: " + ex.getMessage());
+                }
+            }
+        }
+        return estado;
+    }
+
     /**
      * Actualiza el estado de una estación en la base de datos (ej. 'LEAK', 'DESCONECTADA', 'DISPONIBLE').
      */
