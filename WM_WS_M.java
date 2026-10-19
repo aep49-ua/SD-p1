@@ -52,12 +52,27 @@ public class WM_WS_M {
             tramaEnvio = "REGISTRO#" + idEstacion + "#" + ubicacion;
             System.out.println("Enviando trama: " + tramaEnvio);
 
+            // 2.5 Empaquetar la trama
+            String datosEnviar = ProtocoloUtils.empaquetarTrama(tramaEnvio);
+
+            
             // 3. Enviar la trama al servidor
-            escribeSocket(skMonitorCentral, tramaEnvio);
+            escribeSocket(skMonitorCentral, datosEnviar);
 
             // 4. Leer la respuesta del servidor
             respuesta = leeSocket(skMonitorCentral, respuesta);
-            System.out.println("Respuesta del servidor: " + respuesta);
+            
+            // 4.5 Desempaquetar respuesta
+            String datosRecibir = ProtocoloUtils.desempaquetarYValidar(respuesta);
+
+            if (datosRecibir == null) {
+                // Si el LRC o la trama no son válidos, se responde NACK
+                System.err.println("SRV: Trama corrupta o LRC inválido recibido.");
+                this.escribeSocket(skCliente, ProtocoloUtils.NACK);
+                continue; // Vuelve a esperar una trama válida
+            }
+            
+            System.out.println("Respuesta del servidor: " + datosRecibir);
 
 
 
@@ -80,15 +95,19 @@ public class WM_WS_M {
 	            	for(;;)
 	            	{
 	            		// Le mandamos un mensaje de comprobación de estado de salud
-	            		escribeSocket(engineCliente, "ESTADO");
+	                    String datosEnviarE = ProtocoloUtils.empaquetarTrama("ESTADO");
+	            		escribeSocket(engineCliente, datosEnviarE);
 	            		
 	            		// Si no hemos recibido ningún mensaje de WM_WS_E o el mensaje de respuesta es tipo KO
 	            		// enviamos un mensaje de avería al WM_Central
 	            		String msg_WM_WS_E = leeSocket(engineCliente, "");
-	            		if ("KO".equals(msg_WM_WS_E) || msg_WM_WS_E.isEmpty() || msg_WM_WS_E == null)
+	            		String recibeDatos = ProtocoloUtils.desempaquetarYValidar(msg_WM_WS_E);
+	            		if ("KO".equals(recibeDatos) || recibeDatos.isEmpty() || recibeDatos == null)
 	            		{
 	            			System.out.println("Avería detectada");
-	            			escribeSocket(skMonitorCentral, "AVERIA#" + idEstacion);
+	            			
+		                    datosEnviarE = ProtocoloUtils.empaquetarTrama("AVERIA#" + idEstacion);
+	            			escribeSocket(skMonitorCentral, datosEnviarE);
 	            			
 	            			break;
 	            		}
@@ -171,7 +190,7 @@ public class WM_WS_M {
 
             //monitor.registrarEstacion(host, puerto, idEstacion, ubicacion);
         
-            registrarEstacion(ip_wm_central, puerto_wm_central, idEstacion, ubicacion, puerto_WM_WS_E);
+            monitor.registrarEstacion(ip_wm_central, puerto_wm_central, idEstacion, ubicacion, puerto_WM_WS_E);
 
         } catch (Exception e) {
             System.out.println("Error en la lectura de entrada: " + e.getMessage());
