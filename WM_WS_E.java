@@ -77,34 +77,38 @@ public class WM_WS_E extends Thread {
 
         // Configurar e inicializar Productor de Kafka
         String bootstrapServers = ipBroker + ":" + puertoBroker;
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-
-        KafkaProducer<String, String> kafkaProducer = new KafkaProducer<>(props);
-        System.out.println("Conectado al broker de Kafka en: " + bootstrapServers);
+        
+        WateringProducer producer = null;
+        Socket skEngineMonitor = null;
         
         try
-        {
+        {   	
         	int p_wm_ws_m = Integer.parseInt(puerto_wm_ws_m);
         	Socket skEngineMonitor = new Socket(ip_wm_ws_m, p_wm_ws_m);
         	System.out.println("Conectado con WM_WS_M en " + ip_wm_ws_m + ":" + puerto_wm_ws_m);
         	
         	WM_WS_E engine = new WM_WS_E(skEngineMonitor);
         	
+        	// Inicializar el productor Kafka
+        	produce = new WateringProducer(bootstrapServers);
+        	System.out.println("Conectado al broker de Kafka: " + bootstrapServers);
+        	
+        	
         	for(;;)
         	{
         		String msg = engine.leeSocket(skEngineMonitor, "");
-        		if ("ESTADO".equals(msg))
+                String recibirDatos = ProtocoloUtils.desempaquetarYValidar(msg);
+
+        		if ("ESTADO".equals(recibirDatos))
         		{
         			// Cuando recibimos el mensaje ESTADO de WM_WS_M, le enviamos el mensaje OK
-        			escribeSocket(skEngineMonitor, "OK"); 
+        			String enviarDatos = ProtocoloUtils.empaquetarTrama("OK");
+        			engine.escribeSocket(skEngineMonitor, enviarDatos); 
         			
         			// Enviamos evento a Kafka
-        			String jsonPayload = "{\"station_id\": \"WS-01\", \"status\": \"AVAILABLE\", \"flow\": 0.0}";
-                    ProducerRecord<String, String> record = new ProducerRecord<>("numtest", jsonPayload);
-                    
+        			String mensaje = "ESTADO#WS-01#AVAILABLE#0.0";
+        			ProducerRecord<String, String> record = new ProducerRecord<>("numtest", mensaje);
+        			
                     kafkaProducer.send(record, new Callback() {
                         @Override
                         public void onCompletion(RecordMetadata metadata, Exception exception) {
@@ -125,10 +129,9 @@ public class WM_WS_E extends Thread {
             System.out.println(
                 "Error de conexión con WM_WS_M: " + e.getMessage()
             );
-
+		}
         
-        
-
+       
 
        
     }
