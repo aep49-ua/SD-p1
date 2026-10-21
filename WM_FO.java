@@ -9,32 +9,29 @@ public class WM_FO {
             System.exit(-1);
 		}
 		
+		String ruta_fichero = "";
+		if(args.length > 3) {
+			ruta_fichero = args[3];
+		}
+		
 		String ip_broker = args[0];
 		String puerto_broker = args[1];
 		String id_operador = args[2];
+		ruta_fichero
 		
-		String fichero = "";
 		
 		// Configuración del Productor de Kafka para enviar peticiones a la Central
-        String bootstrapServers = ipBroker + ":" + puertoBroker;
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-
-        try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-            System.out.println(">>> [WM_FO] Operador " + idOperador + " conectado al Broker de Kafka en " + bootstrapServers);
-
-            if (rutaFichero != null) {
-                procesarFicheroServicios(producer, idOperador, rutaFichero);
-            } else {
-                procesarModoInteractivo(producer, idOperador);
-            }
-
-        } catch (Exception e) {
-            System.err.println("Error en la aplicación WM_FO: " + e.getMessage());
-        }
-    
+        String bootstrapServers = ip_broker + ":" + puerto_broker;
+        
+        WateringProducer producer = new WateringProducer(bootstrapServers);
+        WateringConsumer consumer = new WateringConsumer(bootstrapServers);
+        
+        
+        // Crear un hilo para inicializar el consumidor
+        Thread threadConsumer = new Thread(consumer);
+    	threadConsumer.setDaemon(true);
+    	threadConsumer.start();
+        
 	}
 	
 	
@@ -42,88 +39,70 @@ public class WM_FO {
      * Lee las solicitudes de un fichero, envía la primera, espera su conclusión, 
      * descansa 4 segundos y procesa la siguiente.
      */
-    private static void procesarFicheroServicios(KafkaProducer<String, String> producer, String idOperador, String rutaFichero) {
-        System.out.println(">>> Leyendo servicios desde el fichero: " + rutaFichero);
-        
+	private static void procesarFicheroServicios(WateringProducer producer, String idOperador, String rutaFichero) {
+        System.out.println("Leyendo servicios en el fichero: " + rutaFichero);
+
         try (BufferedReader br = new BufferedReader(new FileReader(rutaFichero))) {
             String linea;
             while ((linea = br.readLine()) != null) {
                 linea = linea.trim();
-                if (linea.isEmpty() || linea.startsWith("#")) continue; 
+                if (linea.isEmpty() || linea.startsWith("#")) continue;
 
-                // Formato esperado en la línea del fichero (ej: ID_ESTACION, TIEMPO_SEGUNDOS)
-                String[] partes = linea.split(",");
+                String[] partes = linea.contains("#") ? linea.split("#") : linea.split(",");
                 if (partes.length < 2) continue;
 
                 String idEstacion = partes[0].trim();
-                String duracion = partes[1].trim();
+                int duracion = Integer.parseInt(partes[1].trim());
 
-                // Enviar la petición de solicitud de suministro
-                enviarPeticionRiego(producer, idOperador, idEstacion, duracion);
+                // Enviar la petición a la central con Kafka
+                solicitarSuministro(producer, idOperador, idEstacion, duracion);
 
-                // "Enviará el primero a WM_Central y, tras su conclusión (éxito o fracaso), esperará 4 segundos"
-                System.out.println(">>> Esperando la conclusión del servicio y 4 segundos antes del siguiente...");
-                Thread.sleep(4000); 
+                // Esperar a que el riego concluya (duración) + 4 segundos 
+                int tiempoEsperaTotal = duracion + 4;
+                System.out.println("Esperando conclusión del servicio (" + duracion + "s) y pausa de 4s...");
+                Thread.sleep(tiempoEsperaTotal * 1000L);
             }
-        } catch (IOException e) {
-            System.err.println("Error al leer el archivo de servicios: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("Proceso de lectura de fichero interrumpido.");
-        }
+        } catch (IOException | InterruptedException | NumberFormatException e) {
+            System.err.println("Error: " + e.getMessage());
+        } 
     }
 
     /**
      * Permite solicitar un suministro de forma puntual mediante la consola.
      */
-    private static void procesarModoInteractivo(KafkaProducer<String, String> producer, String idOperador) {
+	private static void procesarModoInteractivo(WateringProducer producer, String idOperador) {
         Scanner scanner = new Scanner(System.in);
         System.out.println("\n--- Modo Interactivo Field Operator (" + idOperador + ") ---");
-        System.out.println("Escribe el ID de la estación a regar (o 'salir' para terminar):");
+        System.out.println("Introduce las peticiones en formato: <idWS>#<duracion_segundos> (o 'salir' para terminar)");
 
         while (true) {
-            System.out.print("Estación > ");
-            String idEstacion = scanner.nextLine().trim();
-            if (idEstacion.equalsIgnoreCase("salir")) break;
+            System.out.print("\nWM_FO> ");
+            String entrada = scanner.nextLine().trim();
+            if (entrada.equalsIgnoreCase("salir")) break;
 
-            System.out.print("Duración en segundos > ");
-            String duracion = scanner.nextLine().trim();
+            String[] partes = entrada.contains("#") ? entrada.split("#") : entrada.split(",");
+            if (partes.length >= 2) {
+                try {
+                    String idEstacion = partes[0].trim();
+                    int duracion = Integer.parseInt(partes[1].trim());
 
-            enviarPeticionRiego(producer, idOperador, idEstacion, duracion);
-            System.out.println("Petición enviada. Esperando conclusión...");
-            
-            try {
-                Thread.sleep(4000); 
-            } catch (InterruptedException e) {
-                break;
+                    solicitarSuministro(producer, idOperador, idEstacion, duracion);
+                } catch (NumberFormatException e) {
+                    System.out.println("Error: La duración debe ser un número entero.");
+                }
+            } else {
+                System.out.println("Formato incorrecto. Utiliza: <idWS>#<duracion>");
             }
         }
         scanner.close();
     }
 
-    /**
-     * Envía el mensaje estructurado de solicitud de riego al tópico de Kafka correspondiente.
-     */
-    private static void enviarPeticionRiego(KafkaProducer<String, String> producer, String idOperador, String idEstacion, String duracion) {
-        // Estructura JSON para la petición de riego
-        String jsonPayload = String.format(
-            "{\"action\": \"REQUEST_WATERING\", \"operator_id\": \"%s\", \"station_id\": \"%s\", \"duration_seconds\": %s}",
-            idOperador, idEstacion, duracion
-        );
-
-        // Tópico genérico o específico para peticiones a la central
-        ProducerRecord<String, String> record = new ProducerRecord<>("water-requests-topic", jsonPayload);
-
-        producer.send(record, new Callback() {
-            @Override
-            public void onCompletion(RecordMetadata metadata, Exception exception) {
-                if (exception != null) {
-                    System.err.println("[Error] No se pudo enviar la solicitud para " + idEstacion + ": " + exception.getMessage());
-                } else {
-                    System.out.println("[Éxito] Petición enviada a la estación " + idEstacion + " por el operario " + idOperador);
-                }
-            }
-        });
+    
+    public void solicitarSuministro(WateringProducer producer)
+    {
+    	System.out.println("[FO" + idOpereador + "]" + " Enviando solicitud de riego a " + idWS + " (" + duracionSegundos + "s)");
+    	String mensaje = "START#" + idWS + "#" + idOperador + "#" + duracionSegundos;
+    	producer.enviarOrdenStart(idWS, idOperador, mensaje);
     }
 	
 	
