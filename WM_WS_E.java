@@ -78,25 +78,53 @@ public class WM_WS_E extends Thread {
         // Configurar e inicializar Productor de Kafka
         String bootstrapServers = ipBroker + ":" + puertoBroker;
         
+<<<<<<< HEAD
         WateringProducer producer = null;
         Socket skEngineMonitor = null;
+=======
+        Socket skEngineMonitor = null;
+        WateringProducer producer = null;
+        WateringConsumer consumer = null;
+>>>>>>> arnau
         
         try
         {   	
         	int p_wm_ws_m = Integer.parseInt(puerto_wm_ws_m);
-        	Socket skEngineMonitor = new Socket(ip_wm_ws_m, p_wm_ws_m);
+        	skEngineMonitor = new Socket(ip_wm_ws_m, p_wm_ws_m);
         	System.out.println("Conectado con WM_WS_M en " + ip_wm_ws_m + ":" + puerto_wm_ws_m);
         	
         	WM_WS_E engine = new WM_WS_E(skEngineMonitor);
         	
+<<<<<<< HEAD
         	// Inicializar el productor Kafka
         	produce = new WateringProducer(bootstrapServers);
         	System.out.println("Conectado al broker de Kafka: " + bootstrapServers);
         	
+=======
+        	//1. Inicializar el productor Kafka 
+        	producer = new WateringProducer(bootstrapServers);
+        	System.out.println("Conectado al broker de Kafka: " + bootstrapServers);
+        	
+        	//2. Inicializar el consumidor kafka para escuchar los wm-comandos
+        	consumer = new WateringConsumer(bootstrapServers);
+        	
+        	//3. Crear un hilo para procesar los mensajes de los comandos recibidos de kafka
+        	Thread threadConsumer = new Thread(consumer);
+        	threadConsumer.setDaemon(true);
+        	threadConsumer.start();
+>>>>>>> arnau
         	
         	for(;;)
         	{
         		String msg = engine.leeSocket(skEngineMonitor, "");
+<<<<<<< HEAD
+=======
+        		
+        		if(msg == null) {
+        			System.out.println("Conexión con el Monitor WM_WS_M cerrada";)
+        		}
+        		
+>>>>>>> arnau
                 String recibirDatos = ProtocoloUtils.desempaquetarYValidar(msg);
 
         		if ("ESTADO".equals(recibirDatos))
@@ -106,6 +134,7 @@ public class WM_WS_E extends Thread {
         			engine.escribeSocket(skEngineMonitor, enviarDatos); 
         			
         			// Enviamos evento a Kafka
+<<<<<<< HEAD
         			String mensaje = "ESTADO#WS-01#AVAILABLE#0.0";
         			ProducerRecord<String, String> record = new ProducerRecord<>("numtest", mensaje);
         			
@@ -119,6 +148,11 @@ public class WM_WS_E extends Thread {
                             }
                         }
                     });
+=======
+        			String mensajeEvento = "ESTADO#" + recibirDatos.split("#")[1] + "#AVAILABLE#0.0";
+        			producer.send("wm-eventos", mensajeEvento);
+                    
+>>>>>>> arnau
         		}
         		
         	}
@@ -126,10 +160,23 @@ public class WM_WS_E extends Thread {
         	
         }catch (IOException e) {
 
+<<<<<<< HEAD
             System.out.println(
                 "Error de conexión con WM_WS_M: " + e.getMessage()
             );
 		}
+=======
+            System.out.println("Error de conexión con WM_WS_M: " + e.getMessage());
+		} finally {
+            if (skEngineMonitor != null && !skEngineMonitor.isClosed()) {
+                try {
+                    skEngineMonitor.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+>>>>>>> arnau
         
        
 
