@@ -10,7 +10,6 @@ Práctica de Sistemas Distribuidos (Universidad de Alicante). Sistema de riego c
 - `compose.yml`: entorno local (Kafka + Central).
 - `aws/`: despliegue en EC2.
 - `.github/workflows/deploy.yml`: construye y sube las tres imágenes a Docker Hub.
-- `prompts/`: prompts usados durante el desarrollo.
 
 ## Ejecución local
 
