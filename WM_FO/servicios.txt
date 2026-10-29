@@ -1,0 +1,4 @@
+# Servicios del operario: <idWS>#<segundos>   (tambien vale <idWS>,<segundos>)
+WS-01#10
+WS-02#10
+WS-01#5

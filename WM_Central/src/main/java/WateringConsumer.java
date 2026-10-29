@@ -35,10 +35,14 @@ public class WateringConsumer implements Runnable {
                     String topic = record.topic();
                     String mensaje = record.value();
 
-                    if (topic.equals("water-requests-topic")) {
-                        procesarSolicitudRiego(mensaje);
-                    } else if (topic.equals("wm-telemetria")) {
-                        procesarTelemetria(mensaje);
+                    try {
+                        if (topic.equals("water-requests-topic")) {
+                            procesarSolicitudRiego(mensaje);
+                        } else if (topic.equals("wm-telemetria")) {
+                            procesarTelemetria(mensaje);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("[CONSUMER ERROR] Mensaje descartado (" + mensaje + "): " + e);
                     }
                 }
             }
@@ -61,19 +65,35 @@ public class WateringConsumer implements Runnable {
             int duracion = Integer.parseInt(partes[3].trim());
 
             try {
+                EventosCentral.add("Petición de riego: " + idOperador + " -> " + idEstacion + " (" + duracion + " s)");
+                producer.notificarOperario(idOperador, idEstacion, "CHECKING", "Comprobando operario y estacion");
+
                 String estadoActual = EstacionDAO.obtenerEstado(idEstacion);
 
-                if ("DISPONIBLE".equalsIgnoreCase(estadoActual)) {
-                    EstacionDAO.actualizarEstado(idEstacion, "REGANDO");
+                if (!EstacionDAO.operarioValido(idOperador)) {
+                    String motivo = "Operario no registrado en CENTRAL";
+                    producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
+                    EventosCentral.add("DENEGADO " + idOperador + " -> " + idEstacion + ": " + motivo);
+                    System.err.println("SRV: [DENEGADO] " + motivo + ": " + idOperador);
+
+                } else if (duracion <= 0) {
+                    String motivo = "Duracion no valida";
+                    producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
+                    EventosCentral.add("DENEGADO " + idOperador + " -> " + idEstacion + ": " + motivo);
+
+                } else if ("DISPONIBLE".equalsIgnoreCase(estadoActual)) {
+                    EstacionDAO.iniciarRiego(idEstacion, idOperador);
 
                     producer.enviarOrdenStart(idEstacion, idOperador, duracion);
                     producer.notificarOperario(idOperador, idEstacion, "AUTHORIZED", "Riego iniciado con exito");
+                    EventosCentral.add(idEstacion + " -> riego iniciado por " + idOperador + " (" + duracion + " s)");
 
                     System.out.println("SRV: [AUTORIZADO] Riego permitido para " + idEstacion + " por operario " + idOperador);
 
                 } else {
                     String motivo = "Estación no disponible. Estado actual: " + estadoActual;
                     producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
+                    EventosCentral.add("DENEGADO " + idOperador + " -> " + idEstacion + ": " + estadoActual);
 
                     System.err.println("SRV: [DENEGADO] Riego rechazado en " + idEstacion + " (" + motivo + ")");
                 }
@@ -102,7 +122,13 @@ public class WateringConsumer implements Runnable {
                 System.out.printf("   [MONITOR TELEMETRÍA] Estación: %-6s | Caudal: %-5s L/min | Acumulado: %-6s L | Tiempo: %ss%n",
                         idEstacion, caudal, volumen, tiempo);
 
-            } 
+                try {
+                    EstacionDAO.actualizarTelemetria(idEstacion, Double.parseDouble(caudal), Double.parseDouble(volumen));
+                } catch (Exception e) {
+                    System.err.println("[Central Error BD]: " + e.getMessage());
+                }
+
+            }
             // Trama: METRICS#WS-01#FINISHED#volumen_total#duracion_total
             else if (eventoOEstado.equals("FINISHED") && partes.length >= 5) {
                 String volumenTotal = partes[3].trim();
@@ -115,9 +141,25 @@ public class WateringConsumer implements Runnable {
                 System.out.println("   - Volumen total suministrado: " + volumenTotal + " Litros");
                 System.out.println("=======================================================\n");
 
+                String motivoFin = partes.length >= 6 ? partes[5].trim() : "COMPLETADO";
+                String estadoFinal = motivoFin.equals("LEAK") ? "INTERRUMPIDO_LEAK"
+                        : motivoFin.equals("BLOQUEADO") ? "BLOQUEADO_CENTRAL" : "COMPLETADO";
+
                 try {
-                    EstacionDAO.actualizarEstado(idEstacion, "DISPONIBLE");
-                    System.out.println("[Central] Estación " + idEstacion + " liberada. Estado en BD: DISPONIBLE.");
+                    double volumen = Double.parseDouble(volumenTotal);
+                    int duracion = (int) Math.round(Double.parseDouble(duracionTotal));
+                    String operario = EstacionDAO.finalizarRiego(idEstacion, estadoFinal, volumen, duracion);
+
+                    boolean liberada = EstacionDAO.actualizarEstadoSi(idEstacion, "DISPONIBLE", "REGANDO");
+                    System.out.println("[Central] Estación " + idEstacion + (liberada
+                            ? " liberada. Estado en BD: DISPONIBLE." : " finaliza el riego (estado sin cambios)."));
+                    EventosCentral.add(idEstacion + " -> riego finalizado (" + volumenTotal + " L, " + duracionTotal
+                            + " s, " + motivoFin + ")");
+
+                    if (operario != null) {
+                        producer.notificarOperario(operario, idEstacion, "FINISHED", "Volumen total: " + volumenTotal
+                                + " L | Duracion: " + duracionTotal + " s | Motivo: " + motivoFin);
+                    }
                 } catch (Exception e) {
                     System.err.println("[Central Error BD]: " + e.getMessage());
                 }
