@@ -12,6 +12,10 @@ public class WateringProducer implements AutoCloseable {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
+        props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, "10000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "5000");
+
         this.producer = new KafkaProducer<>(props);
     }
 
@@ -31,8 +35,8 @@ public class WateringProducer implements AutoCloseable {
             @Override
             public void onCompletion(RecordMetadata metadata, Exception exception) {
                 if (exception != null) {
-                    System.err.println("[PRODUCER ERROR] Error al publicar en " + topic + ": " + exception.getMessage());
-                } else {
+                    System.err.println("[PRODUCER ERROR] Imposible conectar con Kafka. No se pudo publicar en " + topic + ": " + exception.getMessage());
+                } else if (!topic.equals("wm-telemetria") && !topic.equals("wm-estaciones")) {
                     System.out.println("[KAFKA PUB] -> Tópico: " + metadata.topic() + " | Trama: " + payload);
                 }
             }

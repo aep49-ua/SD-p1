@@ -98,18 +98,50 @@ public class HiloWM extends Thread {
     
     
     
+    private static final java.util.Map<String, HiloWM> propietario = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void marcarDesconectada(String idEstacion) {
+        if (idEstacion.equals("Desconocida")) {
+            return;
+        }
+        if (propietario.get(idEstacion) != this) {
+            return;
+        }
+        propietario.remove(idEstacion);
+        try {
+            EstacionDAO.actualizarEstado(idEstacion, "DESCONECTADA");
+            EventosCentral.add(idEstacion + " -> estación desconectada");
+        } catch (Exception ex) {
+            System.err.println("Error al actualizar estado desconectado: " + ex.getMessage());
+        }
+    }
+
+    private void notificarFinPorAveria(String operario, String idEstacion, String motivo) {
+        if (WM_Central.producer != null) {
+            WM_Central.producer.notificarOperario(operario, idEstacion, "FINISHED", motivo);
+        }
+    }
+
     @Override
     public void run() {
         String Cadena = "";
         String idEstacion = "Desconocida";
+        String pendiente = null;
 
         try {
+            skCliente.setSoTimeout(15000);
             while (true) {
                 // Leer trama en bruto desde el socket
-                Cadena = this.leeSocket(skCliente, "");
+                if (pendiente != null) {
+                    Cadena = pendiente;
+                    pendiente = null;
+                } else {
+                    Cadena = this.leeSocket(skCliente, "");
+                }
 
                 if (Cadena == null || Cadena.trim().isEmpty()) {
                     System.out.println("SRV: Cliente " + idEstacion + " ha cerrado la conexión.");
+                    marcarDesconectada(idEstacion);
                     break;
                 }
 
@@ -139,8 +171,13 @@ public class HiloWM extends Thread {
 
                         // Persistencia en SQLite
                         EstacionDAO.registrarOAltaEstacion(idEstacion, ubicacion);
+                        propietario.put(idEstacion, this);
+                        if (EstacionDAO.hayRiegoAbierto(idEstacion)) {
+                            EstacionDAO.actualizarEstado(idEstacion, "REGANDO");
+                        }
 
                         mensajeRespuesta = "STATUS#OK#Estacion registrada correctamente";
+                        EventosCentral.add(idEstacion + " (" + ubicacion + ") registrada. Estación DISPONIBLE");
                         System.out.println("SRV: Estación " + idEstacion + " (" + ubicacion + ") REGISTRADA/DADA DE ALTA.");
                     } else {
                         mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para registro";
@@ -151,31 +188,57 @@ public class HiloWM extends Thread {
                     if (campos.length >= 2 && campos[1].startsWith("WS-")) {
                         idEstacion = campos[1].trim();
 
+                        String operario = EstacionDAO.finalizarRiego(idEstacion, "INTERRUMPIDO_LEAK",
+                                EstacionDAO.obtenerVolumen(idEstacion), -1);
+                        if (operario != null) {
+                            notificarFinPorAveria(operario, idEstacion, "Riego interrumpido por fuga");
+                        }
+
                         // Actualizar BD a LEAK
                         EstacionDAO.actualizarEstado(idEstacion, "LEAK");
 
                         mensajeRespuesta = "STATUS#OK#Averia registrada";
+                        EventosCentral.add(idEstacion + " -> fuga detectada. Riego bloqueado");
                         System.out.println("SRV: ALERTA - Fuga en estación " + idEstacion + " (Estado LEAK).");
                     } else {
                         mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para averia";
                     }
                 }
+                else if (comando.equals("RESUELTA")) {
+                    if (campos.length >= 2 && campos[1].startsWith("WS-")) {
+                        idEstacion = campos[1].trim();
+                        if (EstacionDAO.actualizarEstadoSi(idEstacion, "DISPONIBLE", "LEAK")) {
+                            EventosCentral.add(idEstacion + " -> avería resuelta. Estación DISPONIBLE");
+                            System.out.println("SRV: Estación " + idEstacion + " recuperada (DISPONIBLE).");
+                        }
+                        mensajeRespuesta = "STATUS#OK#Averia resuelta";
+                    } else {
+                        mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para resolucion";
+                    }
+                }
+                else if (comando.equals("PING")) {
+                    mensajeRespuesta = "STATUS#OK#pong";
+                }
 
                 // Paso 3: Empaquetar la respuesta con <STX><ANSWER><ETX><LRC> y enviarla
                 String respuestaEmpaquetada = ProtocoloUtils.empaquetarTrama(mensajeRespuesta);
                 this.escribeSocket(skCliente, respuestaEmpaquetada);
-            }
-        } 
-        catch (Exception e) {
-            System.out.println("SRV: Estación " + idEstacion + " DESCONECTADA súbitamente: " + e.getMessage());
-            if (!idEstacion.equals("Desconocida")) {
-                try {
-                    EstacionDAO.actualizarEstado(idEstacion, "DESCONECTADA");
-                } catch (Exception ex) {
-                    System.err.println("Error al actualizar estado desconectado: " + ex.getMessage());
+
+                String confirmacion = this.leeSocket(skCliente, "");
+                if (confirmacion != null && !confirmacion.isEmpty()
+                        && confirmacion.charAt(0) == ProtocoloUtils.STX) {
+                    pendiente = confirmacion;
+                } else if (confirmacion == null || confirmacion.isEmpty()) {
+                    System.out.println("SRV: Cliente " + idEstacion + " ha cerrado la conexión.");
+                    marcarDesconectada(idEstacion);
+                    break;
                 }
             }
-        } 
+        }
+        catch (Exception e) {
+            System.out.println("SRV: Estación " + idEstacion + " DESCONECTADA súbitamente: " + e.getMessage());
+            marcarDesconectada(idEstacion);
+        }
         finally {
             try {
                 if (skCliente != null && !skCliente.isClosed()) {

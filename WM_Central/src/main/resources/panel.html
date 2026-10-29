@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WM_Central - Panel de monitorización</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f2f2f2; color: #222; }
+  header { background: #2c3e50; color: #fff; padding: 10px 16px; }
+  header h1 { font-size: 18px; margin: 0; }
+  main { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .col-tabla { flex: 3 1 560px; }
+  .col-lateral { flex: 1 1 240px; }
+  .caja { background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 12px; }
+  .caja h2 { font-size: 13px; margin: 0 0 8px 0; text-transform: uppercase; color: #555; }
+  .barra { margin-bottom: 8px; }
+  .barra button, .barra input { font-size: 14px; padding: 5px 10px; }
+  .barra input { width: 70px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
+  th { background: #e8e8e8; }
+  tr.sel td:first-child { outline: 3px solid #2c3e50; outline-offset: -3px; }
+  tr { cursor: pointer; }
+  .DISPONIBLE td.est { background: #7ed37e; }
+  .REGANDO td.est { background: #2ecc40; animation: parpadeo 1s infinite; }
+  .LEAK td.est { background: #e74c3c; color: #fff; }
+  .FUERA_DE_SERVICIO td.est { background: #ff9f1a; }
+  .DESCONECTADA td.est { background: #bdbdbd; }
+  @keyframes parpadeo { 50% { background: #d6f5d6; } }
+  .leyenda span { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: middle; }
+  .leyenda div { margin: 4px 0; font-size: 13px; }
+  #mensajes { background: #111; color: #ddd; font-family: monospace; font-size: 13px; height: 220px; overflow-y: auto; padding: 8px; }
+  #mensajes div { margin-bottom: 2px; }
+  #estadoCmd { margin-left: 10px; font-size: 13px; color: #333; }
+  .fila { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; }
+</style>
+</head>
+<body>
+<header><h1>WM_Central — Panel de monitorización de la red de riego</h1></header>
+<main>
+  <div class="col-tabla">
+    <div class="caja">
+      <h2>Estaciones de riego (WS) — <span id="total">0</span> registradas</h2>
+      <div class="barra">
+        Duración (s): <input type="number" id="dur" value="30" min="1">
+        <button onclick="orden('START')">Iniciar riego</button>
+        <button onclick="orden('BLOCK')">Bloquear WS</button>
+        <button onclick="orden('ACTIVATE')">Activar WS</button>
+        <span id="estadoCmd">Selecciona una estación de la tabla.</span>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Ubicación</th><th>Estado</th><th>Caudal (L/min)</th><th>Volumen (L)</th><th>Operario</th></tr>
+        </thead>
+        <tbody id="tabla"></tbody>
+      </table>
+    </div>
+    <div class="caja">
+      <h2>Mensajes de la aplicación</h2>
+      <div id="mensajes"></div>
+    </div>
+  </div>
+  <div class="col-lateral">
+    <div class="caja">
+      <h2>Resumen</h2>
+      <div class="fila"><span>Disponibles</span><b id="n-DISPONIBLE">0</b></div>
+      <div class="fila"><span>Regando</span><b id="n-REGANDO">0</b></div>
+      <div class="fila"><span>Fuga</span><b id="n-LEAK">0</b></div>
+      <div class="fila"><span>Fuera de servicio</span><b id="n-FUERA_DE_SERVICIO">0</b></div>
+      <div class="fila"><span>Desconectadas</span><b id="n-DESCONECTADA">0</b></div>
+    </div>
+    <div class="caja leyenda">
+      <h2>Leyenda</h2>
+      <div><span style="background:#7ed37e"></span>Disponible</div>
+      <div><span style="background:#2ecc40"></span>Regando (parpadea)</div>
+      <div><span style="background:#e74c3c"></span>Fuga</div>
+      <div><span style="background:#ff9f1a"></span>Fuera de servicio</div>
+      <div><span style="background:#bdbdbd"></span>Desconectada</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  var seleccionada = null;
+  var TEXTO = { DISPONIBLE: 'DISPONIBLE', REGANDO: 'REGANDO', LEAK: 'FUGA',
+                FUERA_DE_SERVICIO: 'Fuera de Servicio (Out of Service)', DESCONECTADA: 'DESCONECTADA' };
+
+  function celda(tr, texto, clase) {
+    var td = document.createElement('td');
+    td.textContent = texto;
+    if (clase) td.className = clase;
+    tr.appendChild(td);
+  }
+
+  function pintar(datos) {
+    var tbody = document.getElementById('tabla');
+    tbody.innerHTML = '';
+    var cuenta = { DISPONIBLE: 0, REGANDO: 0, LEAK: 0, FUERA_DE_SERVICIO: 0, DESCONECTADA: 0 };
+    datos.estaciones.forEach(function (e) {
+      cuenta[e.estado] = (cuenta[e.estado] || 0) + 1;
+      var tr = document.createElement('tr');
+      tr.className = e.estado + (e.id === seleccionada ? ' sel' : '');
+      tr.onclick = function () { seleccionada = e.id; pintar(datos); };
+      celda(tr, e.id);
+      celda(tr, e.ubicacion);
+      celda(tr, TEXTO[e.estado] || e.estado, 'est');
+      var regando = e.estado === 'REGANDO';
+      celda(tr, regando ? e.caudal.toFixed(1) : '—');
+      celda(tr, regando ? e.volumen.toFixed(1) : '—');
+      celda(tr, regando ? e.operario : '—');
+      tbody.appendChild(tr);
+    });
+    document.getElementById('total').textContent = datos.estaciones.length;
+    Object.keys(cuenta).forEach(function (k) {
+      document.getElementById('n-' + k).textContent = cuenta[k];
+    });
+    var m = document.getElementById('mensajes');
+    m.innerHTML = '';
+    datos.mensajes.forEach(function (t) {
+      var d = document.createElement('div');
+      d.textContent = t;
+      m.appendChild(d);
+    });
+  }
+
+  function actualizar() {
+    fetch('/api/estado').then(function (r) { return r.json(); }).then(pintar).catch(function () {});
+  }
+
+  function orden(accion) {
+    var info = document.getElementById('estadoCmd');
+    if (!seleccionada) { info.textContent = 'Selecciona primero una estación de la tabla.'; return; }
+    var url = '/api/cmd?accion=' + accion + '&ws=' + encodeURIComponent(seleccionada) +
+              '&dur=' + encodeURIComponent(document.getElementById('dur').value);
+    fetch(url, { method: 'POST' }).then(function (r) { return r.text(); })
+      .then(function (t) { info.textContent = t; actualizar(); });
+  }
+
+  actualizar();
+  setInterval(actualizar, 1000);
+</script>
+</body>
+</html>
