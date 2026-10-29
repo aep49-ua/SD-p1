@@ -40,3 +40,9 @@ Thumbs.db
 .classpath
 .project
 .settings/
+*.db-journal
+*.db-wal
+*.db-shm
+riego_central.db
+PROMPT_*.md
+*.zip
