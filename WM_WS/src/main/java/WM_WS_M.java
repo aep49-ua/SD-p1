@@ -88,6 +88,9 @@ public class WM_WS_M {
             }
 
             System.out.println("Respuesta del servidor: " + datosRecibir);
+            if (datosRecibir.startsWith("STATUS#OK")) {
+                System.out.println("\n==================== [" + idEstacion + "] REGISTRADA EN WM_CENTRAL ====================");
+            }
             return datosRecibir.startsWith("STATUS#OK") ? 1 : -1;
 
         } catch (Exception e) {
@@ -172,7 +175,7 @@ public class WM_WS_M {
                         {
                             if (!averiaReportada)
                             {
-                                System.out.println("Avería detectada");
+                                System.out.println("\n==================== [" + idEstacion + "] AVERÍA DETECTADA: se notifica a WM_Central ====================");
                                 averiaReportada = true;
                                 reportarCentral("AVERIA#" + idEstacion);
                             }
@@ -183,7 +186,7 @@ public class WM_WS_M {
                         }
                         else if (recibeDatos.equals("OK") && averiaReportada)
                         {
-                            System.out.println("Avería resuelta");
+                            System.out.println("\n==================== [" + idEstacion + "] AVERÍA RESUELTA: se notifica a WM_Central ====================");
                             averiaReportada = false;
                             reportarCentral("RESUELTA#" + idEstacion);
                         }

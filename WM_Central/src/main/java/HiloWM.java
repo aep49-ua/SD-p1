@@ -53,51 +53,6 @@ public class HiloWM extends Thread {
         return;
     }
     
-    public int sumar(int p_a, int p_b)
-    {
-        return p_a+p_b;
-    }
-
-    public int multiplicar(int p_a, int p_b)
-    {
-        return p_a*p_b;
-    }
-
-    public int realizarOperacion(String p_Cadena)
-    {
-        String[] operacion = p_Cadena.split(",");
-        int res=0;
-        
-        System.out.println("SRV: La operacion es: " + operacion[0]);
-        if(operacion.length != 1)
-        {
-            System.out.println("SRV: El operando 1 es " + operacion[1] + " y el operando 2 es " + operacion[2]);
-            if(operacion[0].compareTo("suma")==0)
-            {
-                res = sumar(Integer.parseInt(operacion[1]),Integer.parseInt(operacion[2]));
-            }
-            else
-            {
-                if(operacion[0].compareTo("mult")==0)
-                {
-                    res = multiplicar(Integer.parseInt(operacion[1]),Integer.parseInt(operacion[2]));   
-                }   
-                else
-                {
-                    
-                    res = -1;
-                }
-            }
-            System.out.println("SRV: El resultado es: " + res);
-        }else
-        {
-            res = -1;
-        }   
-        return (res);
-    }
-    
-    
-    
     private static final java.util.Map<String, HiloWM> propietario = new java.util.concurrent.ConcurrentHashMap<>();
 
     private void marcarDesconectada(String idEstacion) {
@@ -177,7 +132,14 @@ public class HiloWM extends Thread {
                         }
 
                         mensajeRespuesta = "STATUS#OK#Estacion registrada correctamente";
-                        EventosCentral.add(idEstacion + " (" + ubicacion + ") registrada. Estación DISPONIBLE");
+                        if (EstacionDAO.estaFueraDeServicio(idEstacion)) {
+                            if (WM_Central.producer != null) {
+                                WM_Central.producer.send("wm-comandos", "BLOCK#" + idEstacion);
+                            }
+                            EventosCentral.add(idEstacion + " (" + ubicacion + ") registrada. Sigue Fuera de Servicio");
+                        } else {
+                            EventosCentral.add(idEstacion + " (" + ubicacion + ") registrada. Estación DISPONIBLE");
+                        }
                         System.out.println("SRV: Estación " + idEstacion + " (" + ubicacion + ") REGISTRADA/DADA DE ALTA.");
                     } else {
                         mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para registro";
@@ -207,9 +169,10 @@ public class HiloWM extends Thread {
                 else if (comando.equals("RESUELTA")) {
                     if (campos.length >= 2 && campos[1].startsWith("WS-")) {
                         idEstacion = campos[1].trim();
-                        if (EstacionDAO.actualizarEstadoSi(idEstacion, "DISPONIBLE", "LEAK")) {
-                            EventosCentral.add(idEstacion + " -> avería resuelta. Estación DISPONIBLE");
-                            System.out.println("SRV: Estación " + idEstacion + " recuperada (DISPONIBLE).");
+                        String destino = EstacionDAO.estaFueraDeServicio(idEstacion) ? "FUERA_DE_SERVICIO" : "DISPONIBLE";
+                        if (EstacionDAO.actualizarEstadoSi(idEstacion, destino, "LEAK")) {
+                            EventosCentral.add(idEstacion + " -> avería resuelta. Estación " + destino);
+                            System.out.println("SRV: Estación " + idEstacion + " recuperada (" + destino + ").");
                         }
                         mensajeRespuesta = "STATUS#OK#Averia resuelta";
                     } else {

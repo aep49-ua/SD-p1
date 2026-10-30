@@ -82,6 +82,7 @@ public class WM_WS_E extends Thread {
 			Random rnd = new Random();
 			double volumen = 0;
 			int segundos = 0;
+			banner("RIEGO EN CURSO");
 			System.out.println("[" + id + "] Electroválvula ABIERTA. Riego de " + duracion + " s solicitado por " + operador);
 
 			while (!detener && segundos < duracion) {
@@ -101,11 +102,29 @@ public class WM_WS_E extends Thread {
 				producer.send("wm-telemetria", String.format(Locale.US, "METRICS#%s#WATERING#%.1f#%.2f#%d", id, caudal, volumen, segundos));
 			}
 
+			banner("RIEGO FINALIZADO (" + motivoFin + ")");
 			System.out.println("[" + id + "] Electroválvula CERRADA. Riego finalizado (" + motivoFin + "): "
 					+ String.format(Locale.US, "%.2f", volumen) + " L en " + segundos + " s");
 			producer.send("wm-telemetria", String.format(Locale.US, "METRICS#%s#FINISHED#%.2f#%d#%s", id, volumen, segundos, motivoFin));
 			regando = false;
 		}).start();
+	}
+
+	private static String estadoActual() {
+		if (monitorCaido || ko) {
+			return "AVERIADA";
+		}
+		if (bloqueada) {
+			return "FUERA DE SERVICIO";
+		}
+		if (regando) {
+			return "REGANDO";
+		}
+		return "DISPONIBLE";
+	}
+
+	private static void banner(String texto) {
+		System.out.println("\n==================== [" + idWS + "] " + texto + " ====================");
 	}
 
 	private static void pararRiego(String motivo) {
@@ -135,11 +154,13 @@ public class WM_WS_E extends Thread {
 
 			} else if (partes[0].equals("BLOCK")) {
 				bloqueada = true;
+				banner("FUERA DE SERVICIO");
 				System.out.println("[" + miId + "] FUERA DE SERVICIO por orden de CENTRAL.");
 				pararRiego("BLOQUEADO");
 
 			} else if (partes[0].equals("ACTIVATE")) {
 				bloqueada = false;
+				banner(estadoActual());
 				System.out.println("[" + miId + "] ACTIVADA por orden de CENTRAL. Estación en reposo.");
 			}
 
@@ -157,6 +178,7 @@ public class WM_WS_E extends Thread {
 		System.out.println("  r <segundos>  regar manualmente (lo autoriza CENTRAL)");
 		System.out.println("  s             finalizar el riego en curso");
 		System.out.println("  k             simular fallo (KO) / resolverlo");
+		System.out.println("  e             ver el estado actual de la estación");
 		System.out.println("  q             salir\n");
 
 		while (scanner.hasNextLine()) {
@@ -193,16 +215,19 @@ public class WM_WS_E extends Thread {
 				}
 			} else if (opcion.equals("k")) {
 				ko = !ko;
+				banner(estadoActual());
 				if (ko) {
 					System.out.println("[" + idWS + "] FALLO simulado: el monitor recibirá KO.");
 					pararRiego("LEAK");
 				} else {
 					System.out.println("[" + idWS + "] Fallo resuelto: el monitor recibirá OK.");
 				}
+			} else if (opcion.equals("e")) {
+				System.out.println("[" + idWS + "] Estado actual: " + estadoActual());
 			} else if (opcion.equals("q")) {
 				System.exit(0);
 			} else if (!opcion.isEmpty()) {
-				System.out.println("Opción no válida. Usa r <segundos>, s, k o q.");
+				System.out.println("Opción no válida. Usa r <segundos>, s, k, e o q.");
 			}
 		}
 	}
@@ -266,6 +291,7 @@ public class WM_WS_E extends Thread {
         				if(msg == null || msg.isEmpty()) {
         					System.out.println("Conexión con el Monitor WM_WS_M cerrada");
         					monitorCaido = true;
+        					banner("AVERIADA (sin monitor)");
         					System.out.println("[" + idWS + "] AVERIADA: sin monitor. El riego en curso termina, pero no se admiten más riegos.");
         					break;
         				}
@@ -283,6 +309,7 @@ public class WM_WS_E extends Thread {
 
         					if (monitorCaido) {
         						monitorCaido = false;
+        						banner(estadoActual());
         						System.out.println("[" + idWS + "] Monitor conectado. Estación operativa.");
         					}
         					String enviarDatos = ProtocoloUtils.empaquetarTrama(ko ? "KO" : "OK");

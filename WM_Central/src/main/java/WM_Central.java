@@ -8,6 +8,17 @@ public class WM_Central {
 
 	public static String ejecutarComando(String accion, String idWS, int duracion) {
 		try {
+			if (idWS.equalsIgnoreCase("TODAS")) {
+				StringBuilder sb = new StringBuilder();
+				for (String[] e : EstacionDAO.listarEstaciones()) {
+					if (sb.length() > 0) {
+						sb.append(" | ");
+					}
+					sb.append(ejecutarComando(accion, e[0], duracion));
+				}
+				return sb.toString();
+			}
+
 			String estado = EstacionDAO.obtenerEstado(idWS);
 
 			if (accion.equals("START")) {
@@ -18,15 +29,25 @@ public class WM_Central {
 				if (estado.equals("DESCONECTADA")) {
 					return idWS + " está desconectada: no se puede bloquear";
 				}
-				EstacionDAO.actualizarEstado(idWS, "FUERA_DE_SERVICIO");
+				EstacionDAO.marcarFueraDeServicio(idWS, true);
+				if (!estado.equals("LEAK")) {
+					EstacionDAO.actualizarEstado(idWS, "FUERA_DE_SERVICIO");
+				}
 				producer.send("wm-comandos", "BLOCK#" + idWS);
 				EventosCentral.add(idWS + " -> puesta Fuera de Servicio por CENTRAL");
 				return idWS + " bloqueada (Fuera de Servicio)";
 
 			} else if (accion.equals("ACTIVATE")) {
+				if (estado.equals("LEAK") && EstacionDAO.estaFueraDeServicio(idWS)) {
+					EstacionDAO.marcarFueraDeServicio(idWS, false);
+					producer.send("wm-comandos", "ACTIVATE#" + idWS);
+					EventosCentral.add(idWS + " -> activada por CENTRAL (quedará DISPONIBLE al resolver la fuga)");
+					return idWS + " activada: quedará DISPONIBLE al resolver la fuga";
+				}
 				if (!estado.equals("FUERA_DE_SERVICIO")) {
 					return idWS + " no está Fuera de Servicio (estado actual: " + estado + ")";
 				}
+				EstacionDAO.marcarFueraDeServicio(idWS, false);
 				EstacionDAO.actualizarEstado(idWS, "DISPONIBLE");
 				producer.send("wm-comandos", "ACTIVATE#" + idWS);
 				EventosCentral.add(idWS + " -> activada por CENTRAL");
@@ -141,7 +162,7 @@ public class WM_Central {
 							System.out.println(ejecutarComando("ACTIVATE", partes[1].trim(), 0));
 
 						} else if (!entrada.isEmpty()) {
-							System.out.println("Órdenes: START#<ws>#<segundos> | BLOCK#<ws> | ACTIVATE#<ws>");
+							System.out.println("Órdenes: START#<ws|TODAS>#<segundos> | BLOCK#<ws|TODAS> | ACTIVATE#<ws|TODAS>");
 						}
 					} catch (NumberFormatException e) {
 						System.out.println("La duración debe ser un número entero.");
