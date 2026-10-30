@@ -86,7 +86,8 @@ public class WM_FO {
 			String ws = partes[2];
 			String resultado = partes[3];
 			ultimaRespuesta = System.currentTimeMillis();
-			System.out.println("\n[CENTRAL -> " + id_operador + "] " + ws + ": " + resultado + " - " + partes[4]);
+			System.out.println("\n==================== [" + id_operador + "] " + ws + ": " + etiqueta(resultado) + " ====================");
+			System.out.println("[CENTRAL -> " + id_operador + "] " + partes[4]);
 
 			if (resultado.equals("AUTHORIZED")) {
 				estacionesActivas.add(ws);
@@ -184,15 +185,29 @@ public class WM_FO {
         scanner.close();
     }
 
+    private static String etiqueta(String resultado) {
+        switch (resultado) {
+            case "CHECKING": return "COMPROBANDO LA PETICIÓN";
+            case "AUTHORIZED": return "RIEGO AUTORIZADO";
+            case "DENIED": return "PETICIÓN DENEGADA";
+            case "FINISHED": return "RIEGO FINALIZADO";
+            default: return resultado;
+        }
+    }
+
     private static void mostrarEstaciones() {
         synchronized (estaciones) {
             if (estaciones.isEmpty()) {
                 System.out.println("Todavía no se ha recibido el listado de estaciones de CENTRAL.");
                 return;
             }
-            System.out.println("Estaciones de riego:");
+            System.out.println(String.format("  %-7s %-20s %s", "ID", "ESTADO", "UBICACIÓN"));
             for (Map.Entry<String, String> e : estaciones.entrySet()) {
-                System.out.println("  " + e.getKey() + "  " + e.getValue());
+                String v = e.getValue();
+                int corte = v.indexOf(" - ");
+                String estado = corte >= 0 ? v.substring(0, corte) : v;
+                String ubicacion = corte >= 0 ? v.substring(corte + 3) : "";
+                System.out.println(String.format("  %-7s %-20s %s", e.getKey(), estado.replace("_", " "), ubicacion));
             }
         }
     }

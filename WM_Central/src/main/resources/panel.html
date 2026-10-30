@@ -5,72 +5,117 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WM_Central - Panel de monitorización</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 0; background: #f2f2f2; color: #222; }
-  header { background: #2c3e50; color: #fff; padding: 10px 16px; }
-  header h1 { font-size: 18px; margin: 0; }
-  main { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
-  .col-tabla { flex: 3 1 560px; }
-  .col-lateral { flex: 1 1 240px; }
-  .caja { background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 12px; }
-  .caja h2 { font-size: 13px; margin: 0 0 8px 0; text-transform: uppercase; color: #555; }
-  .barra { margin-bottom: 8px; }
-  .barra button, .barra input { font-size: 14px; padding: 5px 10px; }
-  .barra input { width: 70px; }
+  :root {
+    --disp: #7ed37e; --reg: #2ecc40; --leak: #e74c3c; --fuera: #ff9f1a; --desc: #bdbdbd;
+    --azul: #2c3e50; --borde: #d4d8dc;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #eef1f4; color: #222; }
+  header { background: var(--azul); color: #fff; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header small { opacity: .75; font-weight: 400; margin-left: 8px; }
+  #conexion { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  #punto { width: 10px; height: 10px; border-radius: 50%; background: #2ecc40; display: inline-block; }
+  #punto.caido { background: var(--leak); }
+  #banner { display: none; background: #fdecea; color: #a1281c; border-bottom: 1px solid #f5b5ae; padding: 8px 18px; font-size: 14px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 14px 18px; }
+  .resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tarjeta { background: #fff; border: 1px solid var(--borde); border-left: 6px solid var(--desc); border-radius: 4px; padding: 8px 12px; }
+  .tarjeta b { display: block; font-size: 24px; line-height: 1.1; }
+  .tarjeta span { font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: .03em; }
+  .tarjeta.DISPONIBLE { border-left-color: var(--disp); }
+  .tarjeta.REGANDO { border-left-color: var(--reg); }
+  .tarjeta.LEAK { border-left-color: var(--leak); }
+  .tarjeta.FUERA_DE_SERVICIO { border-left-color: var(--fuera); }
+  .tarjeta.DESCONECTADA { border-left-color: var(--desc); }
+  .caja { background: #fff; border: 1px solid var(--borde); border-radius: 4px; padding: 12px; margin-bottom: 14px; }
+  .caja h2 { font-size: 13px; margin: 0 0 10px 0; text-transform: uppercase; color: #555; letter-spacing: .04em; }
+  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; padding: 8px; background: #f6f8fa; border: 1px solid var(--borde); border-radius: 4px; }
+  .barra label { font-size: 14px; display: flex; align-items: center; gap: 4px; }
+  .barra input[type=number] { width: 70px; font-size: 14px; padding: 5px; }
+  .barra button { font-size: 14px; padding: 6px 12px; border: 1px solid #9aa4ad; background: #fff; border-radius: 4px; cursor: pointer; }
+  .barra button:hover:not(:disabled) { background: #e8eef3; }
+  .barra button:disabled { opacity: .45; cursor: not-allowed; }
+  #btn-START { background: #2e8b3d; color: #fff; border-color: #2e8b3d; }
+  #btn-START:hover:not(:disabled) { background: #26762f; }
+  #btn-BLOCK { background: #e08a00; color: #fff; border-color: #e08a00; }
+  #btn-BLOCK:hover:not(:disabled) { background: #c47900; }
+  #seleccion { font-size: 14px; margin-left: auto; color: #333; }
+  #estadoCmd { font-size: 14px; min-height: 20px; margin-bottom: 8px; }
+  #estadoCmd.ok { color: #1d7a2c; }
+  #estadoCmd.error { color: #a1281c; }
+  .tabla-scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
-  th { background: #e8e8e8; }
-  tr.sel td:first-child { outline: 3px solid #2c3e50; outline-offset: -3px; }
-  tr { cursor: pointer; }
-  .DISPONIBLE td.est { background: #7ed37e; }
-  .REGANDO td.est { background: #2ecc40; animation: parpadeo 1s infinite; }
-  .LEAK td.est { background: #e74c3c; color: #fff; }
-  .FUERA_DE_SERVICIO td.est { background: #ff9f1a; }
-  .DESCONECTADA td.est { background: #bdbdbd; }
-  @keyframes parpadeo { 50% { background: #d6f5d6; } }
-  .leyenda span { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: middle; }
-  .leyenda div { margin: 4px 0; font-size: 13px; }
-  #mensajes { background: #111; color: #ddd; font-family: monospace; font-size: 13px; height: 220px; overflow-y: auto; padding: 8px; }
-  #mensajes div { margin-bottom: 2px; }
-  #estadoCmd { margin-left: 10px; font-size: 13px; color: #333; }
-  .fila { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; }
+  th, td { border-bottom: 1px solid var(--borde); padding: 8px 10px; text-align: left; white-space: nowrap; }
+  th { background: #eef1f4; font-size: 12px; text-transform: uppercase; color: #555; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f4f8fb; }
+  tbody tr.sel { background: #e3edf7; }
+  tbody tr.sel td:first-child { box-shadow: inset 4px 0 0 var(--azul); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  th.num { text-align: right; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-weight: 600; font-size: 13px; }
+  .pill.DISPONIBLE { background: var(--disp); }
+  .pill.REGANDO { background: var(--reg); animation: parpadeo 1s ease-in-out infinite; }
+  .pill.LEAK { background: var(--leak); color: #fff; }
+  .pill.FUERA_DE_SERVICIO { background: var(--fuera); }
+  .pill.DESCONECTADA { background: var(--desc); }
+  @keyframes parpadeo { 0%, 100% { background: var(--reg); } 50% { background: #c8f2cc; } }
+  #mensajes { background: #14181c; color: #dde3e8; font-family: Consolas, monospace; font-size: 13px; height: 240px; overflow-y: auto; padding: 8px 10px; border-radius: 4px; }
+  #mensajes div { padding: 2px 0; border-bottom: 1px solid #222a31; }
+  #mensajes .err { color: #ff8a80; }
+  #mensajes .aviso { color: #ffcc66; }
+  #mensajes .ok { color: #8be08b; }
+  .leyenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; }
+  .leyenda span { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+  .vacio { text-align: center; color: #777; padding: 18px; }
+  @media (max-width: 600px) { main { padding: 10px; } #seleccion { margin-left: 0; width: 100%; } }
 </style>
 </head>
 <body>
-<header><h1>WM_Central — Panel de monitorización de la red de riego</h1></header>
+<header>
+  <h1>WM_Central<small>Panel de monitorización de la red de riego</small></h1>
+  <div id="conexion"><span id="punto"></span><span id="textoConexion">Conectado</span><span id="reloj"></span></div>
+</header>
+<div id="banner">Sin conexión con WM_Central. Reintentando...</div>
 <main>
-  <div class="col-tabla">
-    <div class="caja">
-      <h2>Estaciones de riego (WS) — <span id="total">0</span> registradas</h2>
-      <div class="barra">
-        Duración (s): <input type="number" id="dur" value="30" min="1">
-        <button onclick="orden('START')">Iniciar riego</button>
-        <button onclick="orden('BLOCK')">Bloquear WS</button>
-        <button onclick="orden('ACTIVATE')">Activar WS</button>
-        <span id="estadoCmd">Selecciona una estación de la tabla.</span>
-      </div>
+  <div class="resumen">
+    <div class="tarjeta DISPONIBLE"><b id="n-DISPONIBLE">0</b><span>Disponibles</span></div>
+    <div class="tarjeta REGANDO"><b id="n-REGANDO">0</b><span>Regando</span></div>
+    <div class="tarjeta LEAK"><b id="n-LEAK">0</b><span>Fuga</span></div>
+    <div class="tarjeta FUERA_DE_SERVICIO"><b id="n-FUERA_DE_SERVICIO">0</b><span>Fuera de servicio</span></div>
+    <div class="tarjeta DESCONECTADA"><b id="n-DESCONECTADA">0</b><span>Desconectadas</span></div>
+  </div>
+
+  <div class="caja">
+    <h2>Estaciones de riego (WS) — <span id="total">0</span> registradas</h2>
+    <div class="barra">
+      <label>Duración (s) <input type="number" id="dur" value="30" min="1"></label>
+      <button id="btn-START" onclick="orden('START')">Iniciar riego</button>
+      <button id="btn-BLOCK" onclick="orden('BLOCK')">Bloquear WS</button>
+      <button id="btn-ACTIVATE" onclick="orden('ACTIVATE')">Activar WS</button>
+      <label><input type="checkbox" id="todas"> Todas las WS</label>
+      <span id="seleccion">Ninguna estación seleccionada</span>
+    </div>
+    <div id="estadoCmd">Haz clic en una fila de la tabla para seleccionar una estación.</div>
+    <div class="tabla-scroll">
       <table>
         <thead>
-          <tr><th>ID</th><th>Ubicación</th><th>Estado</th><th>Caudal (L/min)</th><th>Volumen (L)</th><th>Operario</th></tr>
+          <tr><th>ID</th><th>Ubicación</th><th>Estado</th><th class="num">Caudal (L/min)</th><th class="num">Volumen (L)</th><th>Operario</th><th>Última señal</th></tr>
         </thead>
         <tbody id="tabla"></tbody>
       </table>
     </div>
-    <div class="caja">
-      <h2>Mensajes de la aplicación</h2>
-      <div id="mensajes"></div>
-    </div>
   </div>
-  <div class="col-lateral">
-    <div class="caja">
-      <h2>Resumen</h2>
-      <div class="fila"><span>Disponibles</span><b id="n-DISPONIBLE">0</b></div>
-      <div class="fila"><span>Regando</span><b id="n-REGANDO">0</b></div>
-      <div class="fila"><span>Fuga</span><b id="n-LEAK">0</b></div>
-      <div class="fila"><span>Fuera de servicio</span><b id="n-FUERA_DE_SERVICIO">0</b></div>
-      <div class="fila"><span>Desconectadas</span><b id="n-DESCONECTADA">0</b></div>
-    </div>
-    <div class="caja leyenda">
-      <h2>Leyenda</h2>
+
+  <div class="caja">
+    <h2>Mensajes de la aplicación (los más recientes arriba)</h2>
+    <div id="mensajes"></div>
+  </div>
+
+  <div class="caja">
+    <h2>Leyenda</h2>
+    <div class="leyenda">
       <div><span style="background:#7ed37e"></span>Disponible</div>
       <div><span style="background:#2ecc40"></span>Regando (parpadea)</div>
       <div><span style="background:#e74c3c"></span>Fuga</div>
@@ -82,60 +127,157 @@
 
 <script>
   var seleccionada = null;
+  var filas = {};
+  var fallos = 0;
   var TEXTO = { DISPONIBLE: 'DISPONIBLE', REGANDO: 'REGANDO', LEAK: 'FUGA',
                 FUERA_DE_SERVICIO: 'Fuera de Servicio (Out of Service)', DESCONECTADA: 'DESCONECTADA' };
+  var ESTADOS = ['DISPONIBLE', 'REGANDO', 'LEAK', 'FUERA_DE_SERVICIO', 'DESCONECTADA'];
 
-  function celda(tr, texto, clase) {
-    var td = document.createElement('td');
-    td.textContent = texto;
-    if (clase) td.className = clase;
-    tr.appendChild(td);
+  function td(tr, clase) {
+    var c = document.createElement('td');
+    if (clase) c.className = clase;
+    tr.appendChild(c);
+    return c;
+  }
+
+  function crearFila(e) {
+    var tr = document.createElement('tr');
+    tr.onclick = function () { seleccionada = e.id; marcarSeleccion(); };
+    var pill = document.createElement('span');
+    td(tr).className = '';
+    td(tr);
+    td(tr).appendChild(pill);
+    td(tr, 'num'); td(tr, 'num'); td(tr); td(tr);
+    tr.pill = pill;
+    return tr;
+  }
+
+  function marcarSeleccion() {
+    Object.keys(filas).forEach(function (id) {
+      filas[id].classList.toggle('sel', id === seleccionada);
+    });
+    document.getElementById('seleccion').textContent =
+      seleccionada ? 'Seleccionada: ' + seleccionada : 'Ninguna estación seleccionada';
+    botones();
+  }
+
+  function botones() {
+    var todas = document.getElementById('todas').checked;
+    var ok = todas || seleccionada !== null;
+    ['START', 'BLOCK', 'ACTIVATE'].forEach(function (a) {
+      document.getElementById('btn-' + a).disabled = !ok;
+    });
+  }
+
+  function hora(ts) {
+    if (!ts) return '—';
+    return ts.length > 10 ? ts.substring(11, 19) : ts;
   }
 
   function pintar(datos) {
     var tbody = document.getElementById('tabla');
-    tbody.innerHTML = '';
-    var cuenta = { DISPONIBLE: 0, REGANDO: 0, LEAK: 0, FUERA_DE_SERVICIO: 0, DESCONECTADA: 0 };
+    var cuenta = {};
+    ESTADOS.forEach(function (k) { cuenta[k] = 0; });
+    var vistos = {};
     datos.estaciones.forEach(function (e) {
       cuenta[e.estado] = (cuenta[e.estado] || 0) + 1;
-      var tr = document.createElement('tr');
-      tr.className = e.estado + (e.id === seleccionada ? ' sel' : '');
-      tr.onclick = function () { seleccionada = e.id; pintar(datos); };
-      celda(tr, e.id);
-      celda(tr, e.ubicacion);
-      celda(tr, TEXTO[e.estado] || e.estado, 'est');
+      vistos[e.id] = true;
+      var tr = filas[e.id];
+      if (!tr) {
+        tr = crearFila(e);
+        filas[e.id] = tr;
+        tbody.appendChild(tr);
+      }
+      var c = tr.children;
       var regando = e.estado === 'REGANDO';
-      celda(tr, regando ? e.caudal.toFixed(1) : '—');
-      celda(tr, regando ? e.volumen.toFixed(1) : '—');
-      celda(tr, regando ? e.operario : '—');
-      tbody.appendChild(tr);
+      c[0].textContent = e.id;
+      c[1].textContent = e.ubicacion;
+      if (tr.pill.dataset.estado !== e.estado) {
+        tr.pill.dataset.estado = e.estado;
+        tr.pill.className = 'pill ' + e.estado;
+        tr.pill.textContent = TEXTO[e.estado] || e.estado;
+      }
+      c[3].textContent = regando ? e.caudal.toFixed(1) : '—';
+      c[4].textContent = regando ? e.volumen.toFixed(1) : '—';
+      c[5].textContent = regando && e.operario ? e.operario : '—';
+      c[6].textContent = hora(e.ultima);
     });
+    Object.keys(filas).forEach(function (id) {
+      if (!vistos[id]) { filas[id].remove(); delete filas[id]; if (seleccionada === id) seleccionada = null; }
+    });
+    marcarSeleccion();
     document.getElementById('total').textContent = datos.estaciones.length;
-    Object.keys(cuenta).forEach(function (k) {
-      document.getElementById('n-' + k).textContent = cuenta[k];
-    });
+    ESTADOS.forEach(function (k) { document.getElementById('n-' + k).textContent = cuenta[k]; });
+
     var m = document.getElementById('mensajes');
+    var arriba = m.scrollTop;
     m.innerHTML = '';
     datos.mensajes.forEach(function (t) {
       var d = document.createElement('div');
+      var u = t.toUpperCase();
+      if (u.indexOf('LEAK') >= 0 || u.indexOf('AVER') >= 0 || u.indexOf('FUGA') >= 0 || u.indexOf('DESCARTADA') >= 0 || u.indexOf('ERROR') >= 0) d.className = 'err';
+      else if (u.indexOf('DESCONECTADA') >= 0 || u.indexOf('FUERA DE SERVICIO') >= 0 || u.indexOf('INTERRUMPIDO') >= 0) d.className = 'aviso';
+      else if (u.indexOf('DISPONIBLE') >= 0 || u.indexOf('FINALIZ') >= 0 || u.indexOf('COMPLETADO') >= 0) d.className = 'ok';
       d.textContent = t;
       m.appendChild(d);
     });
+    m.scrollTop = arriba;
+    if (!datos.estaciones.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="vacio">No hay estaciones registradas todavía.</td></tr>';
+    } else {
+      var v = tbody.querySelector('.vacio');
+      if (v) v.parentNode.remove();
+    }
+  }
+
+  function estadoConexion(ok) {
+    document.getElementById('punto').className = ok ? '' : 'caido';
+    document.getElementById('textoConexion').textContent = ok ? 'Conectado' : 'Sin conexión';
+    document.getElementById('banner').style.display = ok ? 'none' : 'block';
   }
 
   function actualizar() {
-    fetch('/api/estado').then(function (r) { return r.json(); }).then(pintar).catch(function () {});
+    fetch('/api/estado', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { fallos = 0; estadoConexion(true); pintar(d); })
+      .catch(function () { fallos++; if (fallos >= 2) estadoConexion(false); });
   }
 
   function orden(accion) {
     var info = document.getElementById('estadoCmd');
-    if (!seleccionada) { info.textContent = 'Selecciona primero una estación de la tabla.'; return; }
-    var url = '/api/cmd?accion=' + accion + '&ws=' + encodeURIComponent(seleccionada) +
-              '&dur=' + encodeURIComponent(document.getElementById('dur').value);
-    fetch(url, { method: 'POST' }).then(function (r) { return r.text(); })
-      .then(function (t) { info.textContent = t; actualizar(); });
+    var todas = document.getElementById('todas').checked;
+    if (!todas && !seleccionada) {
+      info.className = 'error';
+      info.textContent = 'Selecciona primero una estación de la tabla.';
+      return;
+    }
+    var destino = todas ? 'TODAS' : seleccionada;
+    var dur = document.getElementById('dur').value;
+    if (accion === 'START' && !(parseInt(dur, 10) > 0)) {
+      info.className = 'error';
+      info.textContent = 'La duración debe ser un número entero mayor que 0.';
+      return;
+    }
+    if (accion === 'BLOCK' && !confirm('¿Bloquear ' + (todas ? 'TODAS las estaciones' : destino) + '? Un riego en curso se interrumpirá.')) {
+      return;
+    }
+    var url = '/api/cmd?accion=' + accion + '&ws=' + encodeURIComponent(destino) + '&dur=' + encodeURIComponent(dur);
+    info.className = '';
+    info.textContent = 'Enviando orden...';
+    fetch(url, { method: 'POST' })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (x) { info.className = x.ok ? 'ok' : 'error'; info.textContent = x.t; actualizar(); })
+      .catch(function () { info.className = 'error'; info.textContent = 'No se pudo contactar con WM_Central.'; });
   }
 
+  function relojTick() {
+    document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-ES');
+  }
+
+  document.getElementById('todas').onchange = botones;
+  botones();
+  relojTick();
+  setInterval(relojTick, 1000);
   actualizar();
   setInterval(actualizar, 1000);
 </script>

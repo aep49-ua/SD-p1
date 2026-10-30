@@ -48,6 +48,31 @@ public class EstacionDAO {
         return lista;
     }
 
+    public static void marcarFueraDeServicio(String idEstacion, boolean fuera) throws Exception {
+        String sql = "UPDATE estaciones SET fuera_servicio = ? WHERE id = ?";
+        try (Connection con = DatabaseInitializer.conectar();
+             PreparedStatement pstmt = con.prepareStatement(sql)) {
+            pstmt.setInt(1, fuera ? 1 : 0);
+            pstmt.setString(2, idEstacion);
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            throw new Exception("Error BD (marcarFueraDeServicio): " + ex.getMessage());
+        }
+    }
+
+    public static boolean estaFueraDeServicio(String idEstacion) throws Exception {
+        String sql = "SELECT 1 FROM estaciones WHERE id = ? AND fuera_servicio = 1";
+        try (Connection con = DatabaseInitializer.conectar();
+             PreparedStatement pstmt = con.prepareStatement(sql)) {
+            pstmt.setString(1, idEstacion);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException ex) {
+            throw new Exception("Error BD (estaFueraDeServicio): " + ex.getMessage());
+        }
+    }
+
     public static boolean operarioValido(String idOperario) throws Exception {
         String sql = "SELECT 1 FROM operarios WHERE id = ? AND activo = 1";
         try (Connection con = DatabaseInitializer.conectar();
@@ -196,7 +221,7 @@ public class EstacionDAO {
                      "VALUES (?, ?, 'DISPONIBLE', CURRENT_TIMESTAMP) " +
                      "ON CONFLICT(id) DO UPDATE SET " +
                      "ubicacion = excluded.ubicacion, " +
-                     "estado = 'DISPONIBLE', " +
+                     "estado = CASE WHEN estaciones.fuera_servicio = 1 THEN 'FUERA_DE_SERVICIO' ELSE 'DISPONIBLE' END, " +
                      "ultima_conexion = CURRENT_TIMESTAMP;";
                      
         Connection con = null;

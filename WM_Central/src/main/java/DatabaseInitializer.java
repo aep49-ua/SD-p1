@@ -25,6 +25,7 @@ public class DatabaseInitializer {
                 + "caudal_litros_min REAL DEFAULT 0.0, "
                 + "volumen_acumulado_litros REAL DEFAULT 0.0, "
                 + "id_operario_actual TEXT, "
+                + "fuera_servicio INTEGER DEFAULT 0, "
                 + "ultima_conexion TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ");";
 
@@ -72,6 +73,11 @@ public class DatabaseInitializer {
             stmt.execute(sqlEstaciones);
             stmt.execute(sqlOperarios);
             stmt.execute(sqlHistoricoRiegos);
+
+            try {
+                stmt.execute("ALTER TABLE estaciones ADD COLUMN fuera_servicio INTEGER DEFAULT 0;");
+            } catch (SQLException yaExiste) {
+            }
 
             stmt.execute(insertOperarios);
             stmt.execute(insertEstaciones);

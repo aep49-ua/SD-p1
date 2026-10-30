@@ -17,6 +17,8 @@ public class WateringConsumer implements Runnable {
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
+        props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "3000");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
@@ -37,7 +39,7 @@ public class WateringConsumer implements Runnable {
 
                     try {
                         if (topic.equals("water-requests-topic")) {
-                            procesarSolicitudRiego(mensaje);
+                            procesarSolicitudRiego(mensaje, record.timestamp());
                         } else if (topic.equals("wm-telemetria")) {
                             procesarTelemetria(mensaje);
                         }
@@ -53,7 +55,7 @@ public class WateringConsumer implements Runnable {
         }
     }
 
-    private void procesarSolicitudRiego(String mensaje) {
+    private void procesarSolicitudRiego(String mensaje, long instante) {
         System.out.println("\n[Central - Petición Recibida]: " + mensaje);
 
         // Trama esperada: REQUEST_WATERING#WS-01#FO-01#120
@@ -63,6 +65,14 @@ public class WateringConsumer implements Runnable {
             String idEstacion = partes[1].trim();
             String idOperador = partes[2].trim();
             int duracion = Integer.parseInt(partes[3].trim());
+
+            if (System.currentTimeMillis() - instante > 10000) {
+                String motivo = "Peticion caducada: CENTRAL no estaba disponible cuando se envio";
+                producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
+                EventosCentral.add("DESCARTADA " + idOperador + " -> " + idEstacion + ": petición caducada");
+                System.err.println("SRV: [DESCARTADA] " + motivo + " (" + mensaje + ")");
+                return;
+            }
 
             try {
                 EventosCentral.add("Petición de riego: " + idOperador + " -> " + idEstacion + " (" + duracion + " s)");
