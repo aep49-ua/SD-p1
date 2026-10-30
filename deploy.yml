@@ -3,7 +3,7 @@ name: Build and Push to Docker Hub
 on:
 push:
 branches:
-- main # Asegúrate de que coincide con el nombre de tu rama principal
+- main 
 jobs:
 build:
 runs-on: ubuntu-latest
