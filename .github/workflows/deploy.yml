@@ -10,7 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [WM_Central, WM_WS, WM_FO]
+        include:
+          - { dir: WM_Central, file: Dockerfile, image: wm-central }
+          - { dir: WM_WS, file: Dockerfile, image: wm-ws-m }
+          - { dir: WM_WS, file: Dockerfile.e, image: wm-ws-e }
+          - { dir: WM_FO, file: Dockerfile, image: wm-fo }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -18,15 +22,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - id: name
-        run: |
-          case "${{ matrix.module }}" in
-            WM_Central) echo "image=wm-central" >> "$GITHUB_OUTPUT" ;;
-            WM_WS) echo "image=wm-ws" >> "$GITHUB_OUTPUT" ;;
-            WM_FO) echo "image=wm-fo" >> "$GITHUB_OUTPUT" ;;
-          esac
       - uses: docker/build-push-action@v6
         with:
-          context: ./${{ matrix.module }}
+          context: ./${{ matrix.dir }}
+          file: ./${{ matrix.dir }}/${{ matrix.file }}
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/${{ steps.name.outputs.image }}:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ matrix.image }}:latest
