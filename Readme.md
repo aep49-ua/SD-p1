@@ -9,7 +9,7 @@ Práctica de Sistemas Distribuidos (Universidad de Alicante). Sistema de riego c
 - `WM_FO`: operario de campo.
 - `compose.yml`: entorno local (Kafka + Central).
 - `aws/`: despliegue en EC2.
-- `.github/workflows/deploy.yml`: construye y sube las tres imágenes a Docker Hub.
+- `.github/workflows/deploy.yml`: construye y sube las cuatro imágenes a Docker Hub.
 - `prompts/`: prompts usados durante el desarrollo.
 
 ## Ejecución local
@@ -50,7 +50,7 @@ cd WM_FO && mvn -q package && java -cp target/app.jar WM_FO localhost 9092 FO-01
 Kafka y Central se ejecutan en una instancia EC2 con Docker, porque Central necesita un puerto TCP (5000) además del panel HTTP.
 
 1. Subir el repositorio a GitHub y definir los secrets `DOCKER_USERNAME` y `DOCKER_PASSWORD`.
-2. El workflow publica `wm-central`, `wm-ws` y `wm-fo` en Docker Hub.
+2. El workflow publica `wm-central`, `wm-ws-m`, `wm-ws-e` y `wm-fo` en Docker Hub.
 3. Lanzar una EC2 Ubuntu con `aws/user-data.sh` como user data (editar usuario de Docker Hub y de GitHub).
 4. Security group: 22, 9092, 5000 y 8080.
 5. Panel: `http://<ip_publica>:8080`.
