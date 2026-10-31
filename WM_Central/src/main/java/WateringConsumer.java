@@ -8,6 +8,7 @@ public class WateringConsumer implements Runnable {
 
     private final KafkaConsumer<String, String> consumer;
     private final WateringProducer producer;
+    // para poder parar el hilo desde fuera con stop()
     private volatile boolean running = true;
 
     public WateringConsumer(String bootstrapServers, String groupId, WateringProducer producer) {
@@ -16,13 +17,16 @@ public class WateringConsumer implements Runnable {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        // solo interesan los mensajes nuevos, no los antiguos que hubiera en el topic
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        // tiempos para que Kafka detecte pronto que Central se ha caído
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
         props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "3000");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
         this.consumer = new KafkaConsumer<>(props);
+        // escucha las peticiones de riego de los operarios y la telemetría de las estaciones
         this.consumer.subscribe(Arrays.asList("water-requests-topic", "wm-telemetria"));
     }
 
@@ -31,6 +35,7 @@ public class WateringConsumer implements Runnable {
         System.out.println(">>> [KAFKA CONSUMER] Escuchando solicitudes y telemetría de la red...");
         try {
             while (running) {
+                // espera hasta 1 s a que lleguen mensajes
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
 
                 for (ConsumerRecord<String, String> record : records) {
@@ -38,6 +43,7 @@ public class WateringConsumer implements Runnable {
                     String mensaje = record.value();
 
                     try {
+                        // según el topic, es una petición de riego o telemetría de una estación
                         if (topic.equals("water-requests-topic")) {
                             procesarSolicitudRiego(mensaje, record.timestamp());
                         } else if (topic.equals("wm-telemetria")) {
@@ -55,6 +61,7 @@ public class WateringConsumer implements Runnable {
         }
     }
 
+    // valida la petición del operario y, si todo está bien, autoriza el riego
     private void procesarSolicitudRiego(String mensaje, long instante) {
         System.out.println("\n[Central - Petición Recibida]: " + mensaje);
 
@@ -66,6 +73,7 @@ public class WateringConsumer implements Runnable {
             String idOperador = partes[2].trim();
             int duracion = Integer.parseInt(partes[3].trim());
 
+            // si la petición tiene más de 10 s se descarta, por ejemplo si Central estaba caído cuando se envió
             if (System.currentTimeMillis() - instante > 10000) {
                 String motivo = "Peticion caducada: CENTRAL no estaba disponible cuando se envio";
                 producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
@@ -76,10 +84,12 @@ public class WateringConsumer implements Runnable {
 
             try {
                 EventosCentral.add("Petición de riego: " + idOperador + " -> " + idEstacion + " (" + duracion + " s)");
+                // primera respuesta al operario: se está comprobando
                 producer.notificarOperario(idOperador, idEstacion, "CHECKING", "Comprobando operario y estacion");
 
                 String estadoActual = EstacionDAO.obtenerEstado(idEstacion);
 
+                // se deniega si el operario no existe, la duración no vale o la estación no está disponible
                 if (!EstacionDAO.operarioValido(idOperador)) {
                     String motivo = "Operario no registrado en CENTRAL";
                     producer.notificarOperario(idOperador, idEstacion, "DENIED", motivo);
@@ -92,6 +102,7 @@ public class WateringConsumer implements Runnable {
                     EventosCentral.add("DENEGADO " + idOperador + " -> " + idEstacion + ": " + motivo);
 
                 } else if ("DISPONIBLE".equalsIgnoreCase(estadoActual)) {
+                    // todo correcto: se abre el riego en la BD, se manda la orden START a la estación y se autoriza al operario
                     EstacionDAO.iniciarRiego(idEstacion, idOperador);
 
                     producer.enviarOrdenStart(idEstacion, idOperador, duracion);
@@ -116,6 +127,7 @@ public class WateringConsumer implements Runnable {
         }
     }
 
+    // tramas METRICS que manda la estación mientras riega y cuando termina
     private void procesarTelemetria(String mensaje) {
         String[] partes = mensaje.split("#");
 
@@ -151,6 +163,7 @@ public class WateringConsumer implements Runnable {
                 System.out.println("   - Volumen total suministrado: " + volumenTotal + " Litros");
                 System.out.println("=======================================================\n");
 
+                // el motivo con el que acabó el riego decide el estado final que queda en el histórico
                 String motivoFin = partes.length >= 6 ? partes[5].trim() : "COMPLETADO";
                 String estadoFinal = motivoFin.equals("LEAK") ? "INTERRUMPIDO_LEAK"
                         : motivoFin.equals("BLOQUEADO") ? "BLOQUEADO_CENTRAL" : "COMPLETADO";
@@ -158,14 +171,17 @@ public class WateringConsumer implements Runnable {
                 try {
                     double volumen = Double.parseDouble(volumenTotal);
                     int duracion = (int) Math.round(Double.parseDouble(duracionTotal));
+                    // se cierra el riego en el histórico
                     String operario = EstacionDAO.finalizarRiego(idEstacion, estadoFinal, volumen, duracion);
 
+                    // la estación vuelve a DISPONIBLE solo si seguía en REGANDO; si hay una fuga o un bloqueo se respeta
                     boolean liberada = EstacionDAO.actualizarEstadoSi(idEstacion, "DISPONIBLE", "REGANDO");
                     System.out.println("[Central] Estación " + idEstacion + (liberada
                             ? " liberada. Estado en BD: DISPONIBLE." : " finaliza el riego (estado sin cambios)."));
                     EventosCentral.add(idEstacion + " -> riego finalizado (" + volumenTotal + " L, " + duracionTotal
                             + " s, " + motivoFin + ")");
 
+                    // se le manda al operario el resumen del riego
                     if (operario != null) {
                         producer.notificarOperario(operario, idEstacion, "FINISHED", "Volumen total: " + volumenTotal
                                 + " L | Duracion: " + duracionTotal + " s | Motivo: " + motivoFin);

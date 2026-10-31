@@ -14,10 +14,13 @@ import java.util.concurrent.Executors;
 
 public class PanelWeb {
 
+    // servidor HTTP del panel; usa el HttpServer que ya trae Java, sin librerías aparte
     public static void iniciar(int puerto) throws IOException {
         HttpServer servidor = HttpServer.create(new InetSocketAddress(puerto), 0);
+        // 4 hilos para atender las peticiones del panel
         servidor.setExecutor(Executors.newFixedThreadPool(4));
 
+        // la página en sí; panel.html va dentro del jar como recurso
         servidor.createContext("/", ex -> {
             if (!ex.getRequestURI().getPath().equals("/")) {
                 responder(ex, 404, "text/plain; charset=utf-8", "No encontrado");
@@ -32,6 +35,7 @@ public class PanelWeb {
             }
         });
 
+        // el panel pide aquí cada poco el estado de las estaciones y los mensajes, en JSON
         servidor.createContext("/api/estado", ex -> {
             try {
                 responder(ex, 200, "application/json; charset=utf-8", construirJson());
@@ -40,6 +44,7 @@ public class PanelWeb {
             }
         });
 
+        // los botones del panel mandan aquí la orden (START, BLOCK o ACTIVATE) por POST
         servidor.createContext("/api/cmd", ex -> {
             if (!ex.getRequestMethod().equals("POST")) {
                 responder(ex, 405, "text/plain; charset=utf-8", "Usa POST");
@@ -55,6 +60,7 @@ public class PanelWeb {
                 responder(ex, 400, "text/plain; charset=utf-8", "La duración debe ser un número entero");
                 return;
             }
+            // para regar hace falta una estación y una duración mayor que 0
             if (ws.isEmpty() || (accion.equals("START") && dur <= 0)) {
                 responder(ex, 400, "text/plain; charset=utf-8", "Selecciona una estación (y una duración > 0 para regar)");
                 return;
@@ -65,6 +71,7 @@ public class PanelWeb {
         servidor.start();
     }
 
+    // monta el JSON a mano para no meter ninguna librería
     private static String construirJson() throws Exception {
         StringBuilder sb = new StringBuilder("{\"estaciones\":[");
         List<String[]> estaciones = EstacionDAO.listarEstaciones();
@@ -88,6 +95,7 @@ public class PanelWeb {
         return sb.append("]}").toString();
     }
 
+    // escapa un texto para meterlo como string dentro del JSON
     private static String str(String s) {
         StringBuilder sb = new StringBuilder("\"");
         for (char c : s.toCharArray()) {
@@ -102,6 +110,7 @@ public class PanelWeb {
         return sb.append('"').toString();
     }
 
+    // saca los parámetros de la URL (accion, ws y dur)
     private static Map<String, String> parametros(String query) {
         Map<String, String> mapa = new HashMap<>();
         if (query == null) return mapa;
@@ -114,6 +123,7 @@ public class PanelWeb {
         return mapa;
     }
 
+    // manda la respuesta HTTP; Cache-Control no-store para que el navegador no se quede con un estado antiguo
     private static void responder(HttpExchange ex, int codigo, String tipo, String cuerpo) throws IOException {
         byte[] datos = cuerpo.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", tipo);

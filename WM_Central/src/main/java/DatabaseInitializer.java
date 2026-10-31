@@ -5,9 +5,11 @@ import java.sql.Statement;
 
 public class DatabaseInitializer {
 
+    // la ruta de la BD se puede cambiar con DB_PATH (en Docker); si no, usa riego_central.db en la carpeta actual
     private static final String DB_URL = "jdbc:sqlite:" +
             (System.getenv("DB_PATH") != null ? System.getenv("DB_PATH") : "riego_central.db");
 
+    // abre una conexión nueva en cada consulta; busy_timeout hace que espere si la BD está ocupada en vez de fallar
     public static Connection conectar() throws SQLException {
         Connection con = DriverManager.getConnection(DB_URL);
         try (Statement st = con.createStatement()) {
@@ -75,6 +77,7 @@ public class DatabaseInitializer {
             stmt.execute(sqlHistoricoRiegos);
 
             try {
+                // por si la BD es de una versión anterior sin la columna fuera_servicio; si ya existe da error y se ignora
                 stmt.execute("ALTER TABLE estaciones ADD COLUMN fuera_servicio INTEGER DEFAULT 0;");
             } catch (SQLException yaExiste) {
             }

@@ -20,21 +20,28 @@ docker compose up -d --build
 
 Panel web: http://localhost:8080
 
-Estación (otra terminal):
+Estación (cada componente en su propia terminal, que se deja abierta):
 
 ```
 cd WM_WS
-CENTRAL_HOST=host.docker.internal BROKER_HOST=host.docker.internal docker compose up -d monitor
+CENTRAL_HOST=host.docker.internal BROKER_HOST=host.docker.internal docker compose up monitor
+```
+
+En otra terminal, con las mismas variables:
+
+```
 docker compose run --rm engine
 ```
 
-Operario:
+Operario (otra terminal; con la imagen publicada: `docker run -it --rm alejandropraats/wm-fo:latest <ip_broker> <puerto_broker> <id_operador>`):
 
 ```
 cd WM_FO
 docker build -t wm-fo .
 docker run -it --rm wm-fo <ip_broker> <puerto_broker> <id_operador> [fichero]
 ```
+
+Para ver los registros de un contenedor: `docker logs -f <nombre>` (el nombre se consulta con `docker ps`).
 
 ## Ejecución sin Docker
 

@@ -17,6 +17,7 @@ public class ListenerKafka implements Runnable {
 
     private final KafkaConsumer<String, String> consumer;
     private final BiConsumer<String, String> callback;
+    // se libera cuando el consumidor ya tiene particiones asignadas, es decir, cuando ya está escuchando
     private final CountDownLatch listo = new CountDownLatch(1);
     private volatile boolean running = true;
 
@@ -30,6 +31,7 @@ public class ListenerKafka implements Runnable {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, grupoFijo != null ? grupoFijo : "wm-" + UUID.randomUUID());
+        // solo se leen los mensajes nuevos
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, grupoFijo != null ? "true" : "false");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
@@ -39,6 +41,7 @@ public class ListenerKafka implements Runnable {
         this.consumer.subscribe(topics);
     }
 
+    // espera como mucho los milisegundos indicados a que el consumidor esté listo
     public boolean esperarListo(long milisegundos) {
         try {
             return listo.await(milisegundos, TimeUnit.MILLISECONDS);
@@ -52,8 +55,10 @@ public class ListenerKafka implements Runnable {
     public void run() {
         try {
             while (running) {
+                // mira Kafka cada 200 ms
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(200));
 
+                // cuando ya hay particiones asignadas se avisa de que está listo; position obliga a conocer desde dónde se empieza a leer
                 if (listo.getCount() > 0 && !consumer.assignment().isEmpty()) {
                     for (TopicPartition tp : consumer.assignment()) {
                         consumer.position(tp);
@@ -63,6 +68,7 @@ public class ListenerKafka implements Runnable {
 
                 for (ConsumerRecord<String, String> record : records) {
                     try {
+                        // cada mensaje se entrega a quien creó el listener
                         callback.accept(record.topic(), record.value());
                     } catch (Exception e) {
                         System.err.println("[LISTENER ERROR] " + record.topic() + ": " + e);

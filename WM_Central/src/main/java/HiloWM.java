@@ -6,6 +6,7 @@ import java.net.Socket;
 
 public class HiloWM extends Thread {
 
+    // socket de la estación a la que atiende este hilo
     private Socket skCliente;
     
     public HiloWM(Socket p_cliente)
@@ -53,12 +54,15 @@ public class HiloWM extends Thread {
         return;
     }
     
+    // qué hilo atiende ahora a cada estación; así no se marca como desconectada una estación que ya se ha reconectado con otro hilo
     private static final java.util.Map<String, HiloWM> propietario = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // pone la estación en DESCONECTADA, pero solo si este hilo sigue siendo su propietario
     private void marcarDesconectada(String idEstacion) {
         if (idEstacion.equals("Desconocida")) {
             return;
         }
+        // la estación ya se registró en otra conexión, no se toca
         if (propietario.get(idEstacion) != this) {
             return;
         }
@@ -71,6 +75,7 @@ public class HiloWM extends Thread {
         }
     }
 
+    // avisa al operario de que su riego ha terminado por una avería
     private void notificarFinPorAveria(String operario, String idEstacion, String motivo) {
         if (WM_Central.producer != null) {
             WM_Central.producer.notificarOperario(operario, idEstacion, "FINISHED", motivo);
@@ -84,6 +89,7 @@ public class HiloWM extends Thread {
         String pendiente = null;
 
         try {
+            // si la estación no dice nada en 15 s se considera perdida la conexión
             skCliente.setSoTimeout(15000);
             while (true) {
                 // Leer trama en bruto desde el socket
@@ -127,11 +133,13 @@ public class HiloWM extends Thread {
                         // Persistencia en SQLite
                         EstacionDAO.registrarOAltaEstacion(idEstacion, ubicacion);
                         propietario.put(idEstacion, this);
+                        // si había un riego sin cerrar en la BD, la estación sigue contando como REGANDO
                         if (EstacionDAO.hayRiegoAbierto(idEstacion)) {
                             EstacionDAO.actualizarEstado(idEstacion, "REGANDO");
                         }
 
                         mensajeRespuesta = "STATUS#OK#Estacion registrada correctamente";
+                        // si Central la había bloqueado antes de caerse, se le vuelve a mandar el bloqueo
                         if (EstacionDAO.estaFueraDeServicio(idEstacion)) {
                             if (WM_Central.producer != null) {
                                 WM_Central.producer.send("wm-comandos", "BLOCK#" + idEstacion);
@@ -150,6 +158,7 @@ public class HiloWM extends Thread {
                     if (campos.length >= 2 && campos[1].startsWith("WS-")) {
                         idEstacion = campos[1].trim();
 
+                        // una avería corta el riego en curso: se cierra en el histórico y se avisa al operario
                         String operario = EstacionDAO.finalizarRiego(idEstacion, "INTERRUMPIDO_LEAK",
                                 EstacionDAO.obtenerVolumen(idEstacion), -1);
                         if (operario != null) {
@@ -166,6 +175,7 @@ public class HiloWM extends Thread {
                         mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para averia";
                     }
                 }
+                // avería resuelta: vuelve a DISPONIBLE, o a FUERA_DE_SERVICIO si Central la había bloqueado
                 else if (comando.equals("RESUELTA")) {
                     if (campos.length >= 2 && campos[1].startsWith("WS-")) {
                         idEstacion = campos[1].trim();
@@ -179,6 +189,7 @@ public class HiloWM extends Thread {
                         mensajeRespuesta = "STATUS#NO OK#Formato incorrecto para resolucion";
                     }
                 }
+                // el ping solo sirve para comprobar que la conexión sigue viva
                 else if (comando.equals("PING")) {
                     mensajeRespuesta = "STATUS#OK#pong";
                 }
@@ -187,6 +198,7 @@ public class HiloWM extends Thread {
                 String respuestaEmpaquetada = ProtocoloUtils.empaquetarTrama(mensajeRespuesta);
                 this.escribeSocket(skCliente, respuestaEmpaquetada);
 
+                // la estación confirma la respuesta; si en vez de eso manda ya otra trama, se guarda para el siguiente ciclo
                 String confirmacion = this.leeSocket(skCliente, "");
                 if (confirmacion != null && !confirmacion.isEmpty()
                         && confirmacion.charAt(0) == ProtocoloUtils.STX) {
@@ -202,6 +214,7 @@ public class HiloWM extends Thread {
             System.out.println("SRV: Estación " + idEstacion + " DESCONECTADA súbitamente: " + e.getMessage());
             marcarDesconectada(idEstacion);
         }
+        // pase lo que pase se cierra el socket
         finally {
             try {
                 if (skCliente != null && !skCliente.isClosed()) {

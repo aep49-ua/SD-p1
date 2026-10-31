@@ -12,6 +12,7 @@ public class WateringProducer implements AutoCloseable {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
+        // tiempos cortos para que, si Kafka no está, el error salga en pocos segundos y no se quede colgado
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
         props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, "10000");
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "5000");
@@ -29,6 +30,7 @@ public class WateringProducer implements AutoCloseable {
         send("water-responses-topic", mensaje);
     }
 
+    // envía el mensaje y hace flush; si falla se muestra el error por pantalla
     public void send(String topic, String payload) {
         ProducerRecord<String, String> record = new ProducerRecord<>(topic, payload);
         producer.send(record, new Callback() {

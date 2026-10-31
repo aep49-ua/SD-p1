@@ -8,6 +8,7 @@ import java.util.List;
 public class EstacionDAO {
 
 
+    // al arrancar Central todas las estaciones pasan a DESCONECTADA
     public static void marcarTodasDesconectadas() throws Exception {
         try (Connection con = DatabaseInitializer.conectar();
              java.sql.Statement st = con.createStatement()) {
@@ -17,6 +18,7 @@ public class EstacionDAO {
         }
     }
 
+    // un riego abierto es el que no tiene fecha_fin en el histórico
     public static boolean hayRiegoAbierto(String idEstacion) throws Exception {
         String sql = "SELECT 1 FROM historico_riegos WHERE id_estacion = ? AND fecha_fin IS NULL";
         try (Connection con = DatabaseInitializer.conectar();
@@ -30,6 +32,7 @@ public class EstacionDAO {
         }
     }
 
+    // estaciones con un riego abierto cuya última señal es de hace más de los segundos indicados
     public static List<String> riegosAbandonados(int segundosSinNoticias) throws Exception {
         String sql = "SELECT DISTINCT h.id_estacion FROM historico_riegos h JOIN estaciones e ON e.id = h.id_estacion " +
                      "WHERE h.fecha_fin IS NULL AND (julianday(CURRENT_TIMESTAMP) - julianday(e.ultima_conexion)) * 86400 > ?";
@@ -48,6 +51,7 @@ public class EstacionDAO {
         return lista;
     }
 
+    // guarda en la BD si Central ha bloqueado la estación
     public static void marcarFueraDeServicio(String idEstacion, boolean fuera) throws Exception {
         String sql = "UPDATE estaciones SET fuera_servicio = ? WHERE id = ?";
         try (Connection con = DatabaseInitializer.conectar();
@@ -60,6 +64,7 @@ public class EstacionDAO {
         }
     }
 
+    // comprueba si la estación está bloqueada por Central
     public static boolean estaFueraDeServicio(String idEstacion) throws Exception {
         String sql = "SELECT 1 FROM estaciones WHERE id = ? AND fuera_servicio = 1";
         try (Connection con = DatabaseInitializer.conectar();
@@ -73,6 +78,7 @@ public class EstacionDAO {
         }
     }
 
+    // el operario tiene que estar en la tabla y estar activo
     public static boolean operarioValido(String idOperario) throws Exception {
         String sql = "SELECT 1 FROM operarios WHERE id = ? AND activo = 1";
         try (Connection con = DatabaseInitializer.conectar();
@@ -86,6 +92,7 @@ public class EstacionDAO {
         }
     }
 
+    // cambia el estado solo si ahora tiene el estado requerido; devuelve si ha cambiado algo
     public static boolean actualizarEstadoSi(String idEstacion, String nuevo, String requerido) throws Exception {
         String sql = "UPDATE estaciones SET estado = ?, ultima_conexion = CURRENT_TIMESTAMP " +
                      "WHERE id = ? AND estado = ?";
@@ -100,6 +107,7 @@ public class EstacionDAO {
         }
     }
 
+    // pone la estación en REGANDO y abre una fila nueva en el histórico, sin fecha_fin hasta que acabe
     public static void iniciarRiego(String idEstacion, String idOperario) throws Exception {
         try (Connection con = DatabaseInitializer.conectar()) {
             try (PreparedStatement p = con.prepareStatement(
@@ -120,6 +128,7 @@ public class EstacionDAO {
         }
     }
 
+    // guarda el último caudal y volumen que manda la estación
     public static void actualizarTelemetria(String idEstacion, double caudal, double volumen) throws Exception {
         String sql = "UPDATE estaciones SET caudal_litros_min = ?, volumen_acumulado_litros = ?, " +
                      "ultima_conexion = CURRENT_TIMESTAMP WHERE id = ?";
@@ -134,6 +143,7 @@ public class EstacionDAO {
         }
     }
 
+    // volumen acumulado hasta ahora en el riego en curso
     public static double obtenerVolumen(String idEstacion) throws Exception {
         String sql = "SELECT volumen_acumulado_litros FROM estaciones WHERE id = ?";
         try (Connection con = DatabaseInitializer.conectar();
@@ -147,6 +157,7 @@ public class EstacionDAO {
         }
     }
 
+    // cierra el riego abierto con su estado final y devuelve el operario para avisarle; con duración negativa la calcula a partir de la fecha de inicio
     public static String finalizarRiego(String idEstacion, String estadoFinal, double volumen, int duracion) throws Exception {
         try (Connection con = DatabaseInitializer.conectar()) {
             String operario = null;
@@ -188,6 +199,7 @@ public class EstacionDAO {
         }
     }
 
+    // devuelve todas las estaciones como filas de texto para el panel y para publicarlas
     public static List<String[]> listarEstaciones() throws Exception {
         String sql = "SELECT id, ubicacion, estado, caudal_litros_min, volumen_acumulado_litros, " +
                      "id_operario_actual, ultima_conexion FROM estaciones ORDER BY id";
@@ -245,6 +257,7 @@ public class EstacionDAO {
         }
     }
 
+    // si la estación no existe se considera DESCONECTADA
     public static String obtenerEstado(String idEstacion) throws Exception {
         String sql = "SELECT estado FROM estaciones WHERE id = ?";
         String estado = "DESCONECTADA";
@@ -275,6 +288,7 @@ public class EstacionDAO {
     }
 
     
+    // cambia el estado y refresca la última conexión
     public static void actualizarEstado(String idEstacion, String estado) throws Exception {
         String sql = "UPDATE estaciones SET estado = ?, ultima_conexion = CURRENT_TIMESTAMP WHERE id = ?";
         

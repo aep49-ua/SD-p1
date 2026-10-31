@@ -4,12 +4,14 @@ import java.net.*;
 
 public class WM_WS_M {
 
+    // conexión del monitor con Central
     private Socket skMonitorCentral = null;
     private String ipCentral;
     private String puertoCentral;
     private String idEstacion;
     private String ubicacion;
 
+    // para avisar de la avería a Central una sola vez hasta que se resuelva
     private boolean averiaReportada = false;
 
     /*
@@ -39,6 +41,7 @@ public class WM_WS_M {
         }
     }
 
+    // manda una trama a Central y devuelve su respuesta; reintenta hasta 3 veces si hay NACK o llega corrupta, y devuelve null si se pierde la conexión
     private String enviarACentral(String datos) {
         for (int intento = 0; intento < 3; intento++) {
             escribeSocket(skMonitorCentral, ProtocoloUtils.empaquetarTrama(datos));
@@ -47,6 +50,7 @@ public class WM_WS_M {
             if (ack == null || ack.isEmpty()) {
                 return null;
             }
+            // Central no entendió la trama (LRC mal), se vuelve a enviar
             if (ack.equals(ProtocoloUtils.NACK)) {
                 continue;
             }
@@ -58,12 +62,14 @@ public class WM_WS_M {
                 escribeSocket(skMonitorCentral, ProtocoloUtils.NACK);
                 continue;
             }
+            // la respuesta llegó bien, se confirma con ACK
             escribeSocket(skMonitorCentral, ProtocoloUtils.ACK);
             return datosRecibir;
         }
         return null;
     }
 
+    // abre la conexión con Central y registra la estación; devuelve 1 si Central acepta, -1 si rechaza y 0 si no se pudo conectar
     private int conectarYRegistrar() {
         try {
             if (skMonitorCentral != null && !skMonitorCentral.isClosed()) {
@@ -73,6 +79,7 @@ public class WM_WS_M {
             // 1. Abrir la conexión con el servidor WM_Central
             int p_wm_central = Integer.parseInt(puertoCentral);
             skMonitorCentral = new Socket();
+            // 5 s de espera para conectar y para leer, para que no se quede colgado si Central no está
             skMonitorCentral.connect(new InetSocketAddress(ipCentral, p_wm_central), 5000);
             skMonitorCentral.setSoTimeout(5000);
             System.out.println("Conectado con el servidor WM_Central en " + ipCentral + ":" + p_wm_central);
@@ -99,6 +106,7 @@ public class WM_WS_M {
         }
     }
 
+    // reintenta cada 3 s hasta conseguir registrarse; si Central rechaza el registro, termina
     private void reconectar() throws InterruptedException {
         int resultado;
         while ((resultado = conectarYRegistrar()) != 1) {
@@ -109,11 +117,13 @@ public class WM_WS_M {
             System.out.println("Reintentando en 3 segundos...");
             Thread.sleep(3000);
         }
+        // si había una avería sin resolver se vuelve a avisar después de reconectar
         if (averiaReportada) {
             enviarACentral("AVERIA#" + idEstacion);
         }
     }
 
+    // envía un mensaje a Central; si falla, reconecta y lo vuelve a enviar
     private void reportarCentral(String datos) throws InterruptedException {
         if (enviarACentral(datos) == null) {
             System.out.println("Imposible conectar con WM_Central: conexión perdida. Reconectando...");
@@ -122,10 +132,12 @@ public class WM_WS_M {
         }
     }
 
+    // ping a Central para que sepa que la estación sigue viva
     private void latido() throws InterruptedException {
         reportarCentral("PING#" + idEstacion);
     }
 
+    // registra la estación en Central y después atiende al engine: le pregunta su estado cada segundo y avisa a Central de las averías y de su resolución
     public void registrarEstacion(String ip_wm_central, String puerto_wm_central, String idEstacion, String ubicacion, String puerto_WM_WS_E) {
         this.ipCentral = ip_wm_central;
         this.puertoCentral = puerto_wm_central;
@@ -141,6 +153,7 @@ public class WM_WS_M {
 
             // Creamos una conexion con WM_WS_E
             skMonitorEngine = new ServerSocket(Integer.parseInt(puerto_WM_WS_E));
+            // cada 5 s sin que el engine se conecte se manda un ping a Central
             skMonitorEngine.setSoTimeout(5000);
             System.out.println("Escucho el puerto " + puerto_WM_WS_E);
 
@@ -157,6 +170,7 @@ public class WM_WS_M {
                         continue;
                     }
                     System.out.println("WM_WS_E conectado");
+                    // si el engine no contesta en 3 s se considera caído
                     engineCliente.setSoTimeout(3000);
 
                     int ciclos = 0;
@@ -171,6 +185,7 @@ public class WM_WS_M {
                         String msg_WM_WS_E = leeSocket(engineCliente, "");
                         String recibeDatos = ProtocoloUtils.desempaquetarYValidar(msg_WM_WS_E);
 
+                        // sin respuesta o con KO del engine hay avería
                         if (recibeDatos == null || recibeDatos.isEmpty() || "KO".equals(recibeDatos))
                         {
                             if (!averiaReportada)
@@ -179,11 +194,13 @@ public class WM_WS_M {
                                 averiaReportada = true;
                                 reportarCentral("AVERIA#" + idEstacion);
                             }
+                            // si el engine ha desaparecido se sale de este bucle y se vuelve a esperar a que se conecte
                             if (recibeDatos == null || recibeDatos.isEmpty())
                             {
                                 break;
                             }
                         }
+                        // el engine vuelve a contestar OK después de una avería: se avisa de que está resuelta
                         else if (recibeDatos.equals("OK") && averiaReportada)
                         {
                             System.out.println("\n==================== [" + idEstacion + "] AVERÍA RESUELTA: se notifica a WM_Central ====================");
@@ -191,6 +208,7 @@ public class WM_WS_M {
                             reportarCentral("RESUELTA#" + idEstacion);
                         }
 
+                        // cada 5 ciclos (unos 5 s) un ping a Central
                         if (++ciclos % 5 == 0) {
                             latido();
                         }
@@ -228,10 +246,12 @@ public class WM_WS_M {
         }
     }
 
+    // monitor de la estación: se registra en Central y hace de intermediario con el engine
     public static void main(String[] args) {
         WM_WS_M monitor = new WM_WS_M();
         BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 
+        // hacen falta el puerto del engine, la ip y el puerto de Central y el id de la estación; la ubicación es opcional
         if (args.length < 4) {
             System.out.println("Uso: java WM_WS_M <puerto_WM_WS_E> <ip_WM_Central> <puerto_WM_Central> <id_ws> [ubicacion]");
             System.exit(-1);
@@ -248,6 +268,7 @@ public class WM_WS_M {
         try {
             idEstacion = id_ws;
 
+            // si la ubicación no viene por argumento se pregunta por teclado
             if (args.length >= 5) {
                 ubicacion = args[4];
             } else {

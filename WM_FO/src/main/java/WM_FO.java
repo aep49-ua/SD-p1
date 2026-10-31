@@ -12,13 +12,19 @@ import java.util.concurrent.TimeUnit;
 public class WM_FO {
 
 	private static String id_operador = "";
+	// estaciones en las que este operario tiene un riego en marcha; solo de esas se imprime la telemetría
 	private static final Set<String> estacionesActivas = ConcurrentHashMap.newKeySet();
+	// último listado de estaciones recibido de Central (id -> estado y ubicación)
 	private static final Map<String, String> estaciones = new TreeMap<>();
+	// estación cuyo fin está esperando el modo fichero
 	private static volatile String esperandoWS = null;
+	// se libera cuando llega el fin o la denegación de la petición que se está esperando
 	private static volatile CountDownLatch conclusion = null;
+	// momento de la última respuesta de Central, para detectar que no contesta
 	private static volatile long ultimaRespuesta = 0;
 
 	public static void main(String [] args) {
+		// hacen falta la ip y el puerto del broker y el id del operario; el fichero de servicios es opcional
 		if(args.length < 3) {
 			System.out.println("Uso: java WM_FO <ip_broker> <puerto_broker> <id_operador> [fichero_servicios]");
             System.exit(-1);
@@ -40,6 +46,7 @@ public class WM_FO {
 
         WateringProducer producer = new WateringProducer(bootstrapServers);
 
+        // el grupo es fijo por operario (fo-<id>): si se cierra y se vuelve a abrir, Kafka le entrega lo que no había leído
         ListenerKafka consumer = new ListenerKafka(bootstrapServers,
         		Arrays.asList("water-responses-topic", "wm-telemetria", "wm-estaciones"), WM_FO::procesarMensaje, "fo-" + id_operador);
 
@@ -50,10 +57,12 @@ public class WM_FO {
     	threadConsumer.start();
 
     	System.out.println("Operario " + id_operador + " conectado al broker " + bootstrapServers);
+    	// se espera a que el consumidor esté suscrito antes de pedir nada, para no perder la respuesta
     	if (!consumer.esperarListo(20000)) {
     		System.out.println("Aviso: no se ha podido suscribir a Kafka todavía; las respuestas pueden tardar.");
     	}
 
+    	// si se pasó un fichero se procesan primero sus peticiones y después se pasa al modo interactivo
     	if (!ruta_fichero.isEmpty()) {
     		procesarFicheroServicios(producer, id_operador, ruta_fichero);
     	}
@@ -65,6 +74,7 @@ public class WM_FO {
 	}
 
 
+	// se llama por cada mensaje de Kafka: listado de estaciones, respuestas de Central y telemetría
 	private static void procesarMensaje(String topic, String mensaje) {
 		String[] partes = mensaje.split("#", 5);
 
@@ -80,6 +90,7 @@ public class WM_FO {
 			}
 
 		} else if (topic.equals("water-responses-topic") && partes[0].equals("RESPONSE") && partes.length >= 5) {
+			// las respuestas dirigidas a otros operarios se ignoran
 			if (!partes[1].equals(id_operador)) {
 				return;
 			}
@@ -89,10 +100,12 @@ public class WM_FO {
 			System.out.println("\n==================== [" + id_operador + "] " + ws + ": " + etiqueta(resultado) + " ====================");
 			System.out.println("[CENTRAL -> " + id_operador + "] " + partes[4]);
 
+			// con el riego autorizado se empieza a mostrar la telemetría de esa estación
 			if (resultado.equals("AUTHORIZED")) {
 				estacionesActivas.add(ws);
 			}
 
+			// tanto si se deniega como si termina ya no hay riego; se avisa al modo fichero por si estaba esperando
 			if (resultado.equals("DENIED") || resultado.equals("FINISHED")) {
 				estacionesActivas.remove(ws);
 				if (ws.equals(esperandoWS) && conclusion != null) {
@@ -101,6 +114,7 @@ public class WM_FO {
 			}
 
 		} else if (topic.equals("wm-telemetria") && partes[0].equals("METRICS") && partes.length >= 5) {
+			// solo se imprime la telemetría de las estaciones donde este operario está regando
 			String[] m = mensaje.split("#");
 			if (m[2].equals("WATERING") && m.length >= 6 && estacionesActivas.contains(m[1])) {
 				System.out.println("   [" + m[1] + "] Regando | caudal " + m[3] + " L/min | acumulado " + m[4] + " L | " + m[5] + " s");
@@ -119,8 +133,10 @@ public class WM_FO {
             String linea;
             while ((linea = br.readLine()) != null) {
                 linea = linea.trim();
+                // se saltan las líneas vacías y los comentarios
                 if (linea.isEmpty() || linea.startsWith("#")) continue;
 
+                // vale tanto estacion#segundos como estacion,segundos
                 String[] partes = linea.contains("#") ? linea.split("#") : linea.split(",");
                 if (partes.length < 2) continue;
 
@@ -134,6 +150,7 @@ public class WM_FO {
                     solicitarSuministro(producer, idOperador, idEstacion, duracion);
 
                     System.out.println("Esperando conclusión del servicio (" + duracion + "s) y pausa de 4s...");
+                    // espera a que acabe el riego, con 30 s de margen sobre la duración pedida
                     if (!conclusion.await(duracion + 30L, TimeUnit.SECONDS)) {
                         System.out.println("No se ha recibido la conclusión del servicio en " + idEstacion + ". Se continúa.");
                     }
@@ -163,6 +180,7 @@ public class WM_FO {
             String entrada = scanner.nextLine().trim();
             if (entrada.equalsIgnoreCase("salir")) break;
 
+            // 'lista' enseña las estaciones que ha publicado Central
             if (entrada.equalsIgnoreCase("lista")) {
                 mostrarEstaciones();
                 continue;
@@ -185,6 +203,7 @@ public class WM_FO {
         scanner.close();
     }
 
+    // texto que se imprime para cada tipo de respuesta de Central
     private static String etiqueta(String resultado) {
         switch (resultado) {
             case "CHECKING": return "COMPROBANDO LA PETICIÓN";
@@ -195,6 +214,7 @@ public class WM_FO {
         }
     }
 
+    // imprime la tabla de estaciones con el último listado recibido
     private static void mostrarEstaciones() {
         synchronized (estaciones) {
             if (estaciones.isEmpty()) {
@@ -213,6 +233,7 @@ public class WM_FO {
     }
 
 
+    // publica la petición de riego en Kafka y vigila que Central conteste
     public static void solicitarSuministro(WateringProducer producer, String idOperador, String idWS, int duracionSegundos)
     {
     	System.out.println("[" + idOperador + "]" + " Enviando solicitud de riego a " + idWS + " (" + duracionSegundos + "s)");
@@ -220,6 +241,7 @@ public class WM_FO {
     	String mensaje = "REQUEST_WATERING#" + idWS + "#" + idOperador + "#" + duracionSegundos;
     	final long enviado = System.currentTimeMillis();
     	producer.send("water-requests-topic", mensaje);
+    	// si en 8 s no llega ninguna respuesta se avisa de que Central no contesta
     	new Thread(() -> {
     		try {
     			Thread.sleep(8000);
