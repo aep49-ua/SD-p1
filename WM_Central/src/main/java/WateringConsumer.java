@@ -44,7 +44,9 @@ public class WateringConsumer implements Runnable {
 
                     try {
                         // según el topic, es una petición de riego o telemetría de una estación
-                        if (topic.equals("water-requests-topic")) {
+                        if (topic.equals("water-requests-topic") && mensaje.startsWith("REGISTER_OPERATOR#")) {
+                            procesarAltaOperario(mensaje);
+                        } else if (topic.equals("water-requests-topic")) {
                             procesarSolicitudRiego(mensaje, record.timestamp());
                         } else if (topic.equals("wm-telemetria")) {
                             procesarTelemetria(mensaje);
@@ -58,6 +60,20 @@ public class WateringConsumer implements Runnable {
             System.err.println("[CONSUMER ERROR] " + e.getMessage());
         } finally {
             consumer.close();
+        }
+    }
+
+    // alta de un operario nuevo cuando arranca WM_FO. Trama: REGISTER_OPERATOR#FO-07
+    private void procesarAltaOperario(String mensaje) throws Exception {
+        String[] partes = mensaje.split("#");
+        if (partes.length >= 2 && partes[1].trim().startsWith("FO-")) {
+            String idOperador = partes[1].trim();
+            if (EstacionDAO.registrarOperario(idOperador)) {
+                EventosCentral.add("Operario " + idOperador + " dado de alta");
+                System.out.println("SRV: Operario " + idOperador + " REGISTRADO/DADO DE ALTA.");
+            }
+        } else {
+            System.err.println("[Central Error] Alta de operario inválida: " + mensaje);
         }
     }
 

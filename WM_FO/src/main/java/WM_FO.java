@@ -62,6 +62,9 @@ public class WM_FO {
     		System.out.println("Aviso: no se ha podido suscribir a Kafka todavía; las respuestas pueden tardar.");
     	}
 
+    	// avisa a Central para que dé de alta al operario en la BD si todavía no existe
+    	producer.send("water-requests-topic", "REGISTER_OPERATOR#" + id_operador);
+
     	// si se pasó un fichero se procesan primero sus peticiones y después se pasa al modo interactivo
     	if (!ruta_fichero.isEmpty()) {
     		procesarFicheroServicios(producer, id_operador, ruta_fichero);

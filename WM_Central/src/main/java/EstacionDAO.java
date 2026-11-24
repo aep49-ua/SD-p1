@@ -92,6 +92,19 @@ public class EstacionDAO {
         }
     }
 
+    // da de alta al operario si no existe (si ya existe no se toca); devuelve true si es nuevo
+    public static boolean registrarOperario(String idOperario) throws Exception {
+        String sql = "INSERT OR IGNORE INTO operarios (id, nombre) VALUES (?, ?)";
+        try (Connection con = DatabaseInitializer.conectar();
+             PreparedStatement pstmt = con.prepareStatement(sql)) {
+            pstmt.setString(1, idOperario);
+            pstmt.setString(2, "Operario " + idOperario);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException ex) {
+            throw new Exception("Error BD (registrarOperario): " + ex.getMessage());
+        }
+    }
+
     // cambia el estado solo si ahora tiene el estado requerido; devuelve si ha cambiado algo
     public static boolean actualizarEstadoSi(String idEstacion, String nuevo, String requerido) throws Exception {
         String sql = "UPDATE estaciones SET estado = ?, ultima_conexion = CURRENT_TIMESTAMP " +
